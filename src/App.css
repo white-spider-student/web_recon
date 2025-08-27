@@ -1,38 +1,142 @@
-.App {
-  text-align: center;
+/* Dark dashboard theme for Web Recon */
+
+:root{
+  --bg:#0d1418;
+  --panel:#11171b;
+  --muted:#9aa6b0;
+  --accent:#2de2e6;
+  --accent-2:#3b82f6;
+  --accent-3:#fb923c;
+  --border:#20282d;
+  --text:#eaf6fb;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+*{box-sizing:border-box}
+
+html,body,#root{
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
+.app-shell{
+  display: flex;
   min-height: 100vh;
+  height: 100vh;
+  background: linear-gradient(180deg,#071017 0%, #0f171b 100%);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.main-content{
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 0 20px 0 20px;
+  position: relative;
+  gap: 24px;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar{width:300px;padding:28px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sidebar h1{color:var(--accent);font-size:28px;margin:0 0 18px 0;letter-spacing:2px}
+.sidebar input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid #182227;background:#0b1113;color:var(--accent);outline:none}
+.sidebar button{width:100%;padding:12px;border-radius:8px;background:var(--accent);color:#041415;border:none;font-weight:700;margin-top:12px;cursor:pointer}
+.sidebar button:hover{filter:brightness(.95)}
+
+.progress-bar{height:10px;background:#0b1113;border-radius:8px;overflow:hidden;margin-top:8px}
+.progress-bar-inner{height:10px;border-radius:8px}
+
+.filters{margin-top:18px}
+.filters label{display:block;color:var(--muted);margin-bottom:8px}
+.filters input[type=checkbox]{accent-color:var(--accent);margin-right:8px}
+
+.graph-area{
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 100vh;
+  min-height: 0;
+  background: linear-gradient(180deg,#0c1316 0%, #11171b 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.03);
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  justify-content: stretch;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  overflow: hidden;
+  position: relative;
+}
+
+.legend{
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: rgba(17,24,28,0.7);
+  padding: 10px 0 10px 0;
+  border-radius: 0 0 12px 12px;
+  display: flex;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  gap: 20px;
+  color: var(--muted);
+  z-index: 10;
+}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px}
+.legend .subdomains{background:var(--accent)}
+.legend .directories{background:var(--accent-2)}
+.legend .endpoints{background:var(--accent-3)}
+
+.details-panel{
+  width:340px;
+  padding:24px;
+  background:linear-gradient(180deg,#0b1a1c 0%, #0f1f21 100%);
+  border-left:1px solid rgba(45,226,230,0.06);
+  display:flex;
+  flex-direction:column;
+  box-shadow: -12px 0 30px rgba(3,25,26,0.6);
+  z-index:100;
+  position:absolute;
+  right:0;
+  top:0;
+  height:100%;
+  transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease;
+  opacity:1;
+}
+.details-panel.hidden{display:none;opacity:0;}
+.details-panel h2{margin:0 0 18px 0;color:var(--accent)}
+.details-panel .status{font-weight:700;color:var(--accent)}
+.details-panel .status.error{color:var(--accent-3)}
+.details-panel .headers,.details-panel .technologies,.details-panel .vulnerabilities{margin-bottom:14px;color:var(--muted)}
+.details-panel .technologies .tech{display:inline-block;margin-right:12px;color:var(--accent)}
+
+.graph-area{position:relative;}
+
+/* Laptop screens: optimize layout for 900px-1400px */
+@media (max-width:1400px) {
+  .app-shell { min-width: 0; }
+  .sidebar { width: 220px; padding: 18px; }
+  .main-content { padding: 0 8px 0 8px; gap: 12px; }
+  .graph-area { border-radius: 8px; }
+  .details-panel { width: 280px; padding: 16px; }
 }
 
-.App-link {
-  color: #61dafb;
+@media (max-width:1100px) {
+  .sidebar { width: 160px; padding: 10px; font-size: 13px; }
+  .main-content { gap: 6px; }
+  .details-panel { width: 220px; padding: 10px; font-size: 13px; }
+  .legend { font-size: 12px; padding: 6px 10px 10px 10px; }
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* Small screens: hide sidebar and details panel, shrink graph */
+@media (max-width:900px) {
+  .sidebar { display: none; }
+  .details-panel { display: none; }
+  .graph-area { width: 98vw; height: 340px; min-width: 0; min-height: 0; }
+  .main-content { padding: 0; gap: 0; }
 }
