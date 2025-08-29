@@ -161,7 +161,7 @@ app.get('/websites/:websiteId/nodes', async (req, res) => {
       SELECT 
         source_node_id as source,
         target_node_id as target,
-        'contains' as type
+        relationship_type as type
       FROM node_relationships 
       WHERE EXISTS (
         SELECT 1 FROM nodes 
@@ -188,7 +188,11 @@ app.get('/websites/:websiteId/nodes', async (req, res) => {
     const relationships = await new Promise((resolve, reject) => {
       db.all(relationshipsQuery, [websiteId], (err, rows) => {
         if (err) reject(err);
-        else resolve(rows || []);
+        else resolve((rows || []).map(rel => ({
+          source: String(rel.source),
+          target: String(rel.target),
+          type: rel.type || 'contains'
+        })));
       });
     });
 

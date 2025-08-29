@@ -7,6 +7,7 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
   const fgRef = useRef(null);
   const prevSpacingRef = useRef(null);
   const [size, setSize] = useState({ width: 800, height: 520 });
+  const didAutoFitRef = useRef(false);
 
   // Expose a simple zoomToNode function globally for external control
   useEffect(() => {
@@ -70,27 +71,38 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
     }
   }, [data]);
 
-  // color mapping for groups
+  // color mapping for groups - consistent color coding as requested
   const nodeColor = (node) => {
-    if (!node || !node.group) return '#bbb';
-    switch (node.group) {
-      case 'subdomain': return 'rgba(45,226,230,0.95)'; // cyan
-      case 'ip': return 'rgba(251,146,60,0.95)'; // orange
-      case 'technology': return 'rgba(59,130,246,0.95)'; // blue
-      case 'port': return 'rgba(167,139,250,0.95)'; // purple
-      case 'service': return 'rgba(52,211,153,0.95)'; // green
+    if (!node || !node.type) return '#bbb';
+    switch (node.type) {
+      case 'domain': return 'rgba(255,255,255,0.95)'; // white - Root
+      case 'subdomain': return 'rgba(45,226,230,0.95)'; // cyan - Subdomains
+      case 'directory': return 'rgba(59,130,246,0.95)'; // blue - Directories
+      case 'endpoint': return 'rgba(251,146,60,0.95)'; // orange - Endpoints
+      case 'file': return 'rgba(251,146,60,0.95)'; // orange - Files (like endpoints)
       default: return '#bbb';
     }
   };
 
-  // center/zoom to fit when data changes
+  // Optimized auto-fit zoom when data changes (run once after first data load)
   useEffect(() => {
-    if (!fgRef.current || !data) return;
-    try {
-      setTimeout(() => {
-        fgRef.current.zoomToFit && fgRef.current.zoomToFit(400, 20);
-      }, 50);
-    } catch (e) {}
+    if (!fgRef.current || !data || !data.nodes?.length) return;
+    if (didAutoFitRef.current) return;
+    
+    // Wait for layout to settle, then auto-fit
+    const autoFitTimeout = setTimeout(() => {
+      try {
+        if (fgRef.current && fgRef.current.zoomToFit) {
+          // Auto-fit with more padding for better spacing visibility
+          fgRef.current.zoomToFit(800, 100); // 800ms transition, 100px padding (increased)
+          didAutoFitRef.current = true;
+        }
+      } catch (e) {
+        console.log('Auto-fit zoom failed:', e);
+      }
+    }, 300); // Increased delay for layout to settle
+    
+    return () => clearTimeout(autoFitTimeout);
   }, [data]);
 
   // on click: center and notify parent
@@ -106,8 +118,9 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
 
   // custom node renderer: animate appearance of new nodes
   const nodeCanvasObject = (node, ctx, globalScale) => {
-    const label = node.id;
-    const baseSize = Math.max(6, (node.val || 6));
+    // Use actual node name (value) instead of ID
+    const label = node.value || node.id;
+    const baseSize = Math.max(6, (node.val || 8));
 
     // animation progress based on when node was first seen
     const addedAt = nodesAddedAt.current.get(node.id) || Date.now();
@@ -118,12 +131,15 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
     const ease = 1 - Math.pow(1 - t, 3);
     const sizeVal = Math.max(1, baseSize * (0.3 + 0.7 * ease));
 
+    // Make root domain larger
+    const finalSize = node.type === 'domain' ? sizeVal * 1.5 : sizeVal;
+
     // highlight halo if node is highlighted
     if (typeof highlightedSet !== 'undefined' && highlightedSet.has(String(node.id))) {
       ctx.save();
       ctx.beginPath();
-      ctx.fillStyle = 'rgba(45,226,230,0.08)';
-      ctx.arc(node.x, node.y, sizeVal * 3.0, 0, 2 * Math.PI, false);
+      ctx.fillStyle = 'rgba(45,226,230,0.15)';
+      ctx.arc(node.x, node.y, finalSize * 2.5, 0, 2 * Math.PI, false);
       ctx.fill();
       ctx.closePath();
       ctx.restore();
@@ -132,119 +148,164 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
     // draw circle
     ctx.beginPath();
     ctx.fillStyle = nodeColor(node);
-    ctx.arc(node.x, node.y, sizeVal, 0, 2 * Math.PI, false);
+    ctx.arc(node.x, node.y, finalSize, 0, 2 * Math.PI, false);
     ctx.fill();
     ctx.lineWidth = Math.max(1, 1.2 / globalScale);
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.strokeStyle = node.type === 'domain' ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.45)';
     ctx.stroke();
 
-    // label visible for reasonable zooms; smaller and lighter (not bold)
-    if (globalScale >= 0.28) {
-      const fontSize = Math.max(9, 10 / globalScale);
-      ctx.font = `400 ${fontSize}px Sans-Serif`;
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = 'rgba(225,235,240,0.88)';
+    // label visible for reasonable zooms
+    if (globalScale >= 0.25) {
+      const fontSize = Math.max(8, 9 / globalScale);
+      ctx.font = `${node.type === 'domain' ? '600' : '400'} ${fontSize}px Sans-Serif`;
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = node.type === 'domain' ? 'rgba(0,0,0,0.9)' : 'rgba(225,235,240,0.95)';
       ctx.textAlign = 'center';
-      // Offset label horizontally if node has a parent (to avoid overlap)
-      let labelOffsetY = baseSize + 14 + fontSize / 2;
-      let labelOffsetX = 0;
-      if (node.group !== 'domain') {
-        // If node is a grandchild, offset label to the right
-        labelOffsetX = 18;
-      }
-      ctx.fillText(label, node.x + labelOffsetX, node.y - labelOffsetY);
+      
+      // Position label below the node
+      const labelOffsetY = finalSize + 15;
+      ctx.fillText(label, node.x, node.y + labelOffsetY);
     }
   };
 
-  // Radial star layout: root in center, direct children in circle, their children outward
+  // Build hierarchical radial layout with proper tree structure
   useEffect(() => {
     if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.links)) return;
+    
     const centerX = size.width / 2;
     const centerY = size.height / 2;
-    const rootIdx = data.nodes.findIndex(n => n.group === 'domain');
-    if (rootIdx === -1) return;
-    const root = data.nodes[rootIdx];
-    // Find direct children of root
-    const directChildren = data.links.filter(l => {
-      return (l.source === root.id || (l.source && l.source.id === root.id));
-    }).map(l => typeof l.target === 'object' ? l.target.id : l.target);
-    // Place root in center
-    root.x = centerX;
-    root.y = centerY;
-    root.fx = root.x;
-    root.fy = root.y;
-    // Place direct children in a circle around root, each with a unique sector
-    const childRadius = Math.min(size.width, size.height) * 0.28;
-    const sectorGap = Math.PI / 18; // larger gap between sectors
-    directChildren.forEach((childId, i) => {
-      // Assign each child a sector (angle range)
-      const sectorSize = (2 * Math.PI) / directChildren.length;
-      const sectorStart = sectorSize * i + sectorGap;
-      const sectorEnd = sectorSize * (i + 1) - sectorGap;
-      const angle = (sectorStart + sectorEnd) / 2;
-      const childNode = data.nodes.find(n => n.id === childId);
-      if (childNode) {
-        childNode.x = centerX + childRadius * Math.cos(angle);
-        childNode.y = centerY + childRadius * Math.sin(angle);
-        childNode.fx = childNode.x;
-        childNode.fy = childNode.y;
-        // Find children of this child (grandchildren)
-        let grandChildren = data.links.filter(l => {
-          return (l.source === childNode.id || (l.source && l.source.id === childNode.id));
-        }).map(l => typeof l.target === 'object' ? l.target.id : l.target);
-        // Sort grandchildren by id for adjacency
-        grandChildren = grandChildren.sort();
-        // Minimum angular separation
-        const minAngleSep = Math.PI / 32;
-        // Increase radial distance for each grandchild to avoid overlap
-        const baseGrandRadius = childRadius + 170;
-        grandChildren.forEach((gId, j) => {
-          // Spread grandchildren evenly within the parent's sector, with extra angle separation
-          const gAngle = sectorStart + ((sectorEnd - sectorStart) * (j + 1) / (grandChildren.length + 1));
-          // Offset angle if too close to previous
-          const prevAngle = j > 0 ? sectorStart + ((sectorEnd - sectorStart) * (j) / (grandChildren.length + 1)) : null;
-          const angleDiff = prevAngle ? Math.abs(gAngle - prevAngle) : minAngleSep;
-          const finalAngle = angleDiff < minAngleSep ? gAngle + minAngleSep : gAngle;
-          // Increase radius for each grandchild to avoid node collision
-          const grandRadius = baseGrandRadius + (j * 18);
-          const gNode = data.nodes.find(n => n.id === gId);
-          if (gNode) {
-            gNode.x = centerX + grandRadius * Math.cos(finalAngle);
-            gNode.y = centerY + grandRadius * Math.sin(finalAngle);
-            gNode.fx = gNode.x;
-            gNode.fy = gNode.y;
+    const rootNode = data.nodes.find(n => n.type === 'domain');
+    
+    if (!rootNode) return;
+    
+    // Build hierarchy tree structure
+    const buildHierarchy = () => {
+      const nodeMap = new Map();
+      data.nodes.forEach(node => {
+        nodeMap.set(node.id, { ...node, children: [], level: 0 });
+      });
+      
+      // Build parent-child relationships from links
+      data.links.forEach(link => {
+        const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+        const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+        
+        if (link.type === 'contains') {
+          const parent = nodeMap.get(sourceId);
+          const child = nodeMap.get(targetId);
+          if (parent && child) {
+            parent.children.push(child);
+            child.parent = parent;
           }
+        }
+      });
+      
+      // Set levels based on distance from root
+      const setLevels = (node, level = 0) => {
+        node.level = level;
+        node.children.forEach(child => setLevels(child, level + 1));
+      };
+      
+      const root = nodeMap.get(rootNode.id);
+      setLevels(root);
+      
+      return { root, nodeMap };
+    };
+    
+    const { root, nodeMap } = buildHierarchy();
+    
+    // Position nodes in radial layout
+    const positionNodes = () => {
+      // Root at center (keep root fixed so layout orbits around it)
+      root.x = centerX;
+      root.y = centerY;
+      root.fx = centerX;
+      root.fy = centerY;
+      
+      // Position nodes level by level with better spacing
+      const positionLevel = (nodes, level) => {
+        if (nodes.length === 0) return;
+        
+        // Calculate radius - single ring for mind map effect
+        const radius = 250; // Fixed radius for all nodes around center
+        
+        // Sort nodes by type for consistent positioning
+        nodes.sort((a, b) => {
+          const typeOrder = { subdomain: 1, directory: 2, endpoint: 3, file: 4 };
+          return (typeOrder[a.type] || 5) - (typeOrder[b.type] || 5);
         });
+        
+        // Add angular spacing between nodes to prevent overlap
+        const totalAngle = 2 * Math.PI;
+        const anglePerNode = totalAngle / nodes.length;
+        
+        nodes.forEach((node, index) => {
+          const angle = anglePerNode * index;
+          
+          // Set initial position but DON'T fix it - let physics take over
+          node.x = centerX + radius * Math.cos(angle);
+          node.y = centerY + radius * Math.sin(angle);
+          // Don't set fx/fy - let physics move the nodes
+        });
+      };
+      
+      // Group all non-root nodes together for single ring layout
+      const allNonRootNodes = [];
+      nodeMap.forEach(node => {
+        if (node.level > 0) { // Skip root (level 0)
+          allNonRootNodes.push(node);
+        }
+      });
+      
+      // Position all non-root nodes in a single ring around the center
+      positionLevel(allNonRootNodes, 1);
+    };
+    
+    positionNodes();
+    
+    // Update the original data nodes with new positions
+    data.nodes.forEach(node => {
+      const hierarchyNode = nodeMap.get(node.id);
+      if (hierarchyNode) {
+        node.x = hierarchyNode.x;
+        node.y = hierarchyNode.y;
+        // Only fix the root domain; let others move with physics
+        if (hierarchyNode.type === 'domain') {
+          node.fx = hierarchyNode.fx;
+          node.fy = hierarchyNode.fy;
+        } else {
+          node.fx = undefined;
+          node.fy = undefined;
+        }
+        node.level = hierarchyNode.level;
       }
     });
-    // Place all other nodes in a secondary ring if not already positioned
-    data.nodes.forEach((node) => {
-      if (typeof node.x !== 'number' || typeof node.y !== 'number') {
-        const idx = data.nodes.indexOf(node);
-        const angle = (2 * Math.PI * idx) / data.nodes.length;
-        const radius = childRadius + 180;
-        node.x = centerX + radius * Math.cos(angle);
-        node.y = centerY + radius * Math.sin(angle);
-        node.fx = node.x;
-        node.fy = node.y;
-      }
-    });
-    // Remove all forces so nodes stay fixed
+    
+    // Enable physics forces with mind map-friendly settings
     if (fgRef.current) {
-      fgRef.current.d3Force('charge', null);
-      fgRef.current.d3Force('collide', null);
-      fgRef.current.d3Force('link', null);
+      // Weaker repulsion to keep nodes closer to center
+      const charge = forceManyBody().strength(-30);
+      
+      // Collision detection to prevent overlap
+      const collide = forceCollide().radius(20).strength(0.8);
+      
+      // Link force to pull connected nodes together
+      const linkForce = forceLink()
+        .id(n => n.id)
+        .distance(80) // Shorter distance for tighter layout
+        .strength(0.6); // Stronger links to maintain structure
+
+      fgRef.current.d3Force('charge', charge);
+      fgRef.current.d3Force('collide', collide);
+      fgRef.current.d3Force('link', linkForce);
       fgRef.current.d3ReheatSimulation && fgRef.current.d3ReheatSimulation();
     }
   }, [data, size]);
 
-  // Apply dynamic forces to the graph
+  // Keep physics enabled; when data changes, gently reheat the simulation
   useEffect(() => {
-    if (fgRef.current) {
-      fgRef.current.d3Force('charge', forceManyBody().strength(-120));
-      fgRef.current.d3Force('collide', forceCollide(50));
-      fgRef.current.d3Force('link', forceLink().distance(200).strength(0.9));
-      fgRef.current.d3ReheatSimulation && fgRef.current.d3ReheatSimulation();
+    if (fgRef.current && fgRef.current.d3ReheatSimulation) {
+      fgRef.current.d3ReheatSimulation();
     }
   }, [data]);
 
@@ -255,7 +316,90 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
   }, []);
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {/* Zoom Controls */}
+      <div style={{
+        position: 'absolute',
+        top: 20,
+        left: 20,
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <button
+          onClick={() => {
+            if (fgRef.current) {
+              const currentZoom = fgRef.current.zoom();
+              fgRef.current.zoom(currentZoom * 1.5, 300);
+            }
+          }}
+          style={{
+            width: '40px',
+            height: '40px',
+            border: 'none',
+            borderRadius: '6px',
+            background: 'rgba(31, 41, 55, 0.9)',
+            color: 'white',
+            cursor: 'pointer',
+            fontSize: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          title="Zoom In"
+        >
+          +
+        </button>
+        <button
+          onClick={() => {
+            if (fgRef.current) {
+              const currentZoom = fgRef.current.zoom();
+              fgRef.current.zoom(currentZoom / 1.5, 300);
+            }
+          }}
+          style={{
+            width: '40px',
+            height: '40px',
+            border: 'none',
+            borderRadius: '6px',
+            background: 'rgba(31, 41, 55, 0.9)',
+            color: 'white',
+            cursor: 'pointer',
+            fontSize: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          title="Zoom Out"
+        >
+          −
+        </button>
+        <button
+          onClick={() => {
+            if (fgRef.current && fgRef.current.zoomToFit) {
+              fgRef.current.zoomToFit(400, 50);
+            }
+          }}
+          style={{
+            width: '40px',
+            height: '40px',
+            border: 'none',
+            borderRadius: '6px',
+            background: 'rgba(31, 41, 55, 0.9)',
+            color: 'white',
+            cursor: 'pointer',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          title="Fit to View"
+        >
+          ⌂
+        </button>
+      </div>
+      
       <ForceGraph2D
         ref={fgRef}
         width={size.width}
@@ -264,24 +408,66 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
         nodeColor={nodeColor}
         nodeLabel={node => `${node.type}: ${node.value}`}
         onNodeClick={handleNodeClick}
-        nodeVal={n => 5}
-        linkDirectionalArrowLength={3}
-        linkDirectionalArrowRelPos={1}
-        nodeCanvasObject={(node, ctx, globalScale) => {
-          const label = `${node.type}: ${node.value}`;
-          const fontSize = 12/globalScale;
-          ctx.font = `${fontSize}px Sans-Serif`;
-          ctx.fillStyle = nodeColor(node);
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, 5, 0, 2 * Math.PI, false);
-          ctx.fill();
-          
-          // Draw label
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = 'white';
-          ctx.fillText(label, node.x, node.y + 10);
+        nodeVal={n => 8}
+        
+        // Link styling for relationships
+        linkWidth={(link) => {
+          // Check if link is part of highlighted path
+          const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+          const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+          const linkKey = `${sourceId}~${targetId}`;
+          return pathLinks.current.has(linkKey) ? 4 : 2;
         }}
+        
+        linkColor={(link) => {
+          // Check if link is part of highlighted path
+          const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+          const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+          const linkKey = `${sourceId}~${targetId}`;
+          
+          if (pathLinks.current.has(linkKey)) {
+            return 'rgba(45,226,230,0.9)'; // Bright cyan for highlighted paths
+          }
+          
+          // Color links by relationship type
+          switch(link.type) {
+            case 'contains': return 'rgba(59,130,246,0.7)'; // blue
+            case 'related': return 'rgba(251,146,60,0.7)'; // orange
+            case 'api_related': return 'rgba(45,226,230,0.7)'; // cyan
+            case 'security_concern': return 'rgba(239,68,68,0.7)'; // red
+            case 'configures': return 'rgba(34,197,94,0.7)'; // green
+            case 'mirrors': return 'rgba(168,85,247,0.7)'; // purple
+            case 'redirect_to': return 'rgba(245,158,11,0.7)'; // yellow
+            default: return 'rgba(156,163,175,0.5)'; // gray
+          }
+        }}
+        
+        linkDirectionalArrowLength={6}
+        linkDirectionalArrowRelPos={0.9}
+        linkDirectionalArrowColor={(link) => {
+          const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+          const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+          const linkKey = `${sourceId}~${targetId}`;
+          
+          if (pathLinks.current.has(linkKey)) {
+            return 'rgba(45,226,230,1)'; // Bright cyan for highlighted paths
+          }
+          
+          switch(link.type) {
+            case 'contains': return 'rgba(59,130,246,0.9)'; 
+            case 'related': return 'rgba(251,146,60,0.9)';
+            case 'api_related': return 'rgba(45,226,230,0.9)';
+            case 'security_concern': return 'rgba(239,68,68,0.9)';
+            case 'configures': return 'rgba(34,197,94,0.9)';
+            case 'mirrors': return 'rgba(168,85,247,0.9)';
+            case 'redirect_to': return 'rgba(245,158,11,0.9)';
+            default: return 'rgba(156,163,175,0.7)';
+          }
+        }}
+        
+        linkLabel={link => `${link.type || 'connection'}`}
+        
+        nodeCanvasObject={nodeCanvasObject}
       />
     </div>
   );

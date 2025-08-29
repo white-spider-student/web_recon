@@ -1,90 +1,206 @@
 {
   "website": {
-    "url": "mywebsite.com",
-    "name": "My Target Website"
+    "url": "omnixplatform.com",
+    "name": "Omnix Platform"
   },
   "nodes": [
     {
-      "value": "mywebsite.com",
+      "value": "omnixplatform.com",
       "type": "domain",
       "status": 200,
-      "size": 2048,
+      "size": 4096,
       "headers": [
-        { "key": "Server", "value": "Apache/2.4.41" },
+        { "key": "Server", "value": "nginx/1.18.0" },
         { "key": "Content-Type", "value": "text/html" },
-        { "key": "X-Powered-By", "value": "PHP/7.4.3" }
+        { "key": "X-Powered-By", "value": "PHP/8.1" }
       ],
-      "technologies": ["Apache", "PHP", "HTML5"],
+      "technologies": ["Nginx", "PHP", "HTML5"],
       "vulnerabilities": []
     },
     {
-      "value": "www.mywebsite.com",
+      "value": "www.omnixplatform.com",
       "type": "subdomain",
       "status": 200,
       "size": 3072,
       "headers": [
-        { "key": "Server", "value": "Apache/2.4.41" },
-        { "key": "X-Powered-By", "value": "PHP/7.4.3" }
+        { "key": "Server", "value": "nginx/1.18.0" }
       ],
-      "technologies": ["Apache", "PHP", "WordPress"],
+      "technologies": ["Nginx", "WordPress"],
       "vulnerabilities": ["WordPress version disclosure"]
     },
     {
-      "value": "mail.mywebsite.com",
+      "value": "app.omnixplatform.com",
       "type": "subdomain",
       "status": 200,
-      "size": 512,
+      "size": 2048,
       "headers": [
-        { "key": "Server", "value": "Postfix" }
+        { "key": "Server", "value": "nginx/1.18.0" }
       ],
-      "technologies": ["Postfix", "Email Server"],
+      "technologies": ["React", "REST API"],
       "vulnerabilities": []
     },
     {
-      "value": "ftp.mywebsite.com",
+      "value": "shop.omnixplatform.com",
       "type": "subdomain",
       "status": 200,
-      "size": 256,
-      "headers": [],
-      "technologies": ["FTP", "vsftpd"],
-      "vulnerabilities": ["Anonymous FTP enabled"]
+      "size": 2500,
+      "headers": [
+        { "key": "Server", "value": "nginx/1.18.0" }
+      ],
+      "technologies": ["Magento", "PHP"],
+      "vulnerabilities": ["Magento outdated version"]
     },
     {
-      "value": "mywebsite.com/admin",
-      "type": "directory",
+      "value": "bank.omnixplatform.com",
+      "type": "subdomain",
+      "status": 200,
+      "size": 3000,
+      "headers": [
+        { "key": "Server", "value": "nginx/1.18.0" }
+      ],
+      "technologies": ["Java", "Spring Boot"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "admin.omnixplatform.com",
+      "type": "subdomain",
       "status": 403,
       "size": 0,
       "headers": [
-        { "key": "Server", "value": "Apache/2.4.41" }
+        { "key": "Server", "value": "nginx/1.18.0" }
       ],
       "technologies": [],
-      "vulnerabilities": ["Admin panel accessible"]
+      "vulnerabilities": ["Admin panel exposed"]
     },
     {
-      "value": "mywebsite.com/wp-content/uploads",
+      "value": "cdn.omnixplatform.com",
+      "type": "subdomain",
+      "status": 200,
+      "size": 1024,
+      "headers": [
+        { "key": "Server", "value": "cloudflare" }
+      ],
+      "technologies": ["CDN"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "dev.omnixplatform.com",
+      "type": "subdomain",
+      "status": 200,
+      "size": 1800,
+      "headers": [],
+      "technologies": ["Staging Environment"],
+      "vulnerabilities": ["Exposed dev environment"]
+    },
+    {
+      "value": "status.omnixplatform.com",
+      "type": "subdomain",
+      "status": 200,
+      "size": 1024,
+      "headers": [],
+      "technologies": ["Status Page"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "support.omnixplatform.com",
+      "type": "subdomain",
+      "status": 200,
+      "size": 1500,
+      "headers": [],
+      "technologies": ["Zendesk"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "omnixplatform.com/admin",
+      "type": "directory",
+      "status": 403,
+      "size": 0,
+      "headers": [],
+      "technologies": [],
+      "vulnerabilities": ["Admin directory accessible"]
+    },
+    {
+      "value": "omnixplatform.com/products",
       "type": "directory",
       "status": 200,
       "size": 4096,
-      "headers": [
-        { "key": "Content-Type", "value": "text/html" }
-      ],
-      "technologies": ["WordPress"],
-      "vulnerabilities": ["Directory listing enabled"]
+      "headers": [],
+      "technologies": ["Magento"],
+      "vulnerabilities": []
     },
     {
-      "value": "mywebsite.com/api/v1/users",
+      "value": "omnixplatform.com/cart",
+      "type": "directory",
+      "status": 200,
+      "size": 1024,
+      "headers": [],
+      "technologies": ["Magento"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "omnixplatform.com/checkout",
+      "type": "directory",
+      "status": 200,
+      "size": 2048,
+      "headers": [],
+      "technologies": ["Magento"],
+      "vulnerabilities": ["Payment flow exposure"]
+    },
+    {
+      "value": "omnixplatform.com/uploads",
+      "type": "directory",
+      "status": 200,
+      "size": 1024,
+      "headers": [],
+      "technologies": [],
+      "vulnerabilities": ["Unrestricted file upload"]
+    },
+    {
+      "value": "omnixplatform.com/api/v1/users",
       "type": "endpoint",
       "status": 200,
       "size": 1024,
       "headers": [
-        { "key": "Content-Type", "value": "application/json" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" }
+        { "key": "Content-Type", "value": "application/json" }
       ],
-      "technologies": ["REST API", "JSON"],
-      "vulnerabilities": ["No authentication required", "CORS misconfiguration"]
+      "technologies": ["REST API"],
+      "vulnerabilities": ["No authentication required"]
     },
     {
-      "value": "mywebsite.com/config.php.bak",
+      "value": "omnixplatform.com/api/v1/orders",
+      "type": "endpoint",
+      "status": 200,
+      "size": 1500,
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
+      ],
+      "technologies": ["REST API"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "omnixplatform.com/api/v1/account",
+      "type": "endpoint",
+      "status": 200,
+      "size": 1500,
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
+      ],
+      "technologies": ["REST API"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "omnixplatform.com/api/v1/transfer",
+      "type": "endpoint",
+      "status": 200,
+      "size": 1200,
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
+      ],
+      "technologies": ["REST API"],
+      "vulnerabilities": ["Weak authorization checks"]
+    },
+    {
+      "value": "omnixplatform.com/config.php.bak",
       "type": "file",
       "status": 200,
       "size": 2048,
@@ -92,10 +208,10 @@
         { "key": "Content-Type", "value": "application/octet-stream" }
       ],
       "technologies": ["PHP"],
-      "vulnerabilities": ["Configuration backup exposed", "Sensitive file disclosure"]
+      "vulnerabilities": ["Configuration backup exposed"]
     },
     {
-      "value": "mywebsite.com/.env",
+      "value": "omnixplatform.com/.env",
       "type": "file",
       "status": 200,
       "size": 512,
@@ -103,17 +219,54 @@
         { "key": "Content-Type", "value": "text/plain" }
       ],
       "technologies": [],
-      "vulnerabilities": ["Environment file exposed", "Database credentials disclosure"]
+      "vulnerabilities": ["Database credentials disclosure"]
+    },
+    {
+      "value": "omnixplatform.com/backup.sql",
+      "type": "file",
+      "status": 200,
+      "size": 8192,
+      "headers": [
+        { "key": "Content-Type", "value": "application/sql" }
+      ],
+      "technologies": ["MySQL"],
+      "vulnerabilities": ["Database dump exposed"]
+    },
+    {
+      "value": "omnixplatform.com/private.key",
+      "type": "file",
+      "status": 200,
+      "size": 2048,
+      "headers": [
+        { "key": "Content-Type", "value": "application/octet-stream" }
+      ],
+      "technologies": ["SSL/TLS"],
+      "vulnerabilities": ["Private key disclosure"]
     }
   ],
   "relationships": [
-    { "source": "mywebsite.com", "target": "www.mywebsite.com", "type": "contains" },
-    { "source": "mywebsite.com", "target": "mail.mywebsite.com", "type": "contains" },
-    { "source": "mywebsite.com", "target": "ftp.mywebsite.com", "type": "contains" },
-    { "source": "mywebsite.com", "target": "mywebsite.com/admin", "type": "contains" },
-    { "source": "mywebsite.com", "target": "mywebsite.com/wp-content/uploads", "type": "contains" },
-    { "source": "mywebsite.com", "target": "mywebsite.com/api/v1/users", "type": "contains" },
-    { "source": "mywebsite.com", "target": "mywebsite.com/config.php.bak", "type": "contains" },
-    { "source": "mywebsite.com", "target": "mywebsite.com/.env", "type": "contains" }
+    { "source": "omnixplatform.com", "target": "www.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "app.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "shop.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "bank.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "admin.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "cdn.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "dev.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "status.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "support.omnixplatform.com", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/admin", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/products", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/cart", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/checkout", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/uploads", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/api/v1/users", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/api/v1/orders", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/api/v1/account", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/api/v1/transfer", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/config.php.bak", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/.env", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/backup.sql", "type": "contains" },
+    { "source": "omnixplatform.com", "target": "omnixplatform.com/private.key", "type": "contains" }
   ]
 }
+

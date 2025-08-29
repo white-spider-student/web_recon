@@ -19,7 +19,13 @@ export default function App() {
   const [statusFilters, setStatusFilters] = useState({ '200': true, '403': true, '500': true });
   const [techFilters, setTechFilters] = useState({ 'React': true, 'WordPress': true, 'Laravel': true });
   // Visualization filters
-  const [typeFilters, setTypeFilters] = useState({ root: true, subdomain: true, directory: true, endpoint: true, file: true });
+  const [typeFilters, setTypeFilters] = useState({ 
+    domain: true, 
+    subdomain: true, 
+    directory: true, 
+    endpoint: true, 
+    file: true 
+  });
   const [methodFilters, setMethodFilters] = useState({ GET: true, POST: true });
   const [fileTypeFilters, setFileTypeFilters] = useState({ Env: true, Text: true, XML: true, PHP: true, Hidden: true, Backup: true, SQL: true });
 
@@ -135,21 +141,34 @@ export default function App() {
       const websitesResponse = await axios.get('http://localhost:3001/websites');
       const websites = websitesResponse.data;
       
-      // If no websites exist, create a default one
-      let websiteId = 1;
-      if (websites.length === 0) {
+      // Search for website by URL (case-insensitive)
+      const targetUrl = target.trim().toLowerCase();
+      let website = websites.find(w => w.url.toLowerCase() === targetUrl);
+      let websiteId;
+      
+      if (!website) {
+        // Website not found, create a new one
         const newWebsiteResponse = await axios.post('http://localhost:3001/websites', {
           url: target || 'example.com',
           name: target || 'Example Website'
         });
         websiteId = newWebsiteResponse.data.id;
+        console.log(`Created new website: ${target}`);
       } else {
-        websiteId = websites[0].id;
+        // Website found, use its ID
+        websiteId = website.id;
+        console.log(`Found existing website: ${website.name} (ID: ${websiteId})`);
       }
       
       // Fetch nodes and relationships for the website
       const response = await axios.get(`http://localhost:3001/websites/${websiteId}/nodes`);
       const { nodes, relationships } = response.data;
+      
+      console.log('=== DEBUG INFO ===');
+      console.log('Website ID:', websiteId);
+      console.log('Nodes received:', nodes.length);
+      console.log('Relationships received:', relationships.length);
+      console.log('Sample relationships:', relationships.slice(0, 3));
       
       // Transform nodes to match the expected format
       const transformedNodes = nodes.map(node => ({
@@ -157,18 +176,26 @@ export default function App() {
         group: node.type,
         type: node.type,
         value: node.value,
-        website_id: node.website_id,
-        label: node.value // Add label to show the value in the graph
+        status: node.status,
+        size: node.size,
+        label: node.value
       }));
       
-      // Transform relationships into links
-      const links = relationships.map(rel => ({
-        source: rel.source_id,
-        target: rel.target_id,
-        type: rel.type
+      // Transform relationships to match the expected format
+      const transformedLinks = relationships.map(rel => ({
+        source: rel.source,
+        target: rel.target,
+        type: rel.type || 'contains'
       }));
+      
+      console.log('Final graph data:', { 
+        nodes: transformedNodes.length, 
+        links: transformedLinks.length 
+      });
+      console.log('Sample links:', transformedLinks.slice(0, 3));
+      console.log('=== END DEBUG ===');
 
-      setGraphData({ nodes: transformedNodes, links });
+      setGraphData({ nodes: transformedNodes, links: transformedLinks });
     } catch (err) {
       console.error('Error fetching data:', err);
       setError('Failed to fetch data from the server');
@@ -262,24 +289,29 @@ export default function App() {
           <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', minHeight: 0 }}>
             <Graph
               data={(function() {
-                // ...existing code...
+                // Filter nodes based on current filter settings
                 const visibleNodes = graphData.nodes.filter(n => {
-                  let status = n.status || (String(n.id || '').includes('adm') ? '403' : '200');
-                  status = String(status).replace(/[^0-9]/g, '');
+                  // Get status from the node data
+                  const status = String(n.status || '200').replace(/[^0-9]/g, '');
+                  
+                  // Check if this node should be visible based on filters
                   if (!statusFilters[status]) return false;
                   if (n.type && !typeFilters[n.type]) return false;
-                  if (n.method && !methodFilters[n.method]) return false;
-                  if (n.fileType && !fileTypeFilters[n.fileType]) return false;
+                  
                   return true;
                 });
+                
+                // Get IDs of visible nodes
                 const visibleIds = new Set(visibleNodes.map(n => n.id));
+                
+                // Filter links to only show connections between visible nodes
                 const visibleLinks = graphData.links.filter(l => {
-                  const a = typeof l.source === 'object' ? l.source.id : l.source;
-                  const b = typeof l.target === 'object' ? l.target.id : l.target;
-                  return visibleIds.has(a) && visibleIds.has(b);
+                  const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                  const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                  return visibleIds.has(sourceId) && visibleIds.has(targetId);
                 });
+                
                 return {
-                  ...graphData,
                   nodes: visibleNodes,
                   links: visibleLinks
                 };
@@ -303,6 +335,7 @@ export default function App() {
           </div>
           {/* Color example legend overlays at bottom of graph area */}
           <div className="legend">
+            <div><span className="root" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#ffffff', border: '1px solid #ccc', marginRight: 8 }} /> Root Domain</div>
             <div><span className="subdomains" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#2de2e6', marginRight: 8 }} /> Subdomains</div>
             <div><span className="directories" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#3b82f6', marginRight: 8 }} /> Directories</div>
             <div><span className="endpoints" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#fb923c', marginRight: 8 }} /> Endpoints</div>
