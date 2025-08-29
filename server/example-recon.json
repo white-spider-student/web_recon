@@ -1,0 +1,119 @@
+{
+  "website": {
+    "url": "mywebsite.com",
+    "name": "My Target Website"
+  },
+  "nodes": [
+    {
+      "value": "mywebsite.com",
+      "type": "domain",
+      "status": 200,
+      "size": 2048,
+      "headers": [
+        { "key": "Server", "value": "Apache/2.4.41" },
+        { "key": "Content-Type", "value": "text/html" },
+        { "key": "X-Powered-By", "value": "PHP/7.4.3" }
+      ],
+      "technologies": ["Apache", "PHP", "HTML5"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "www.mywebsite.com",
+      "type": "subdomain",
+      "status": 200,
+      "size": 3072,
+      "headers": [
+        { "key": "Server", "value": "Apache/2.4.41" },
+        { "key": "X-Powered-By", "value": "PHP/7.4.3" }
+      ],
+      "technologies": ["Apache", "PHP", "WordPress"],
+      "vulnerabilities": ["WordPress version disclosure"]
+    },
+    {
+      "value": "mail.mywebsite.com",
+      "type": "subdomain",
+      "status": 200,
+      "size": 512,
+      "headers": [
+        { "key": "Server", "value": "Postfix" }
+      ],
+      "technologies": ["Postfix", "Email Server"],
+      "vulnerabilities": []
+    },
+    {
+      "value": "ftp.mywebsite.com",
+      "type": "subdomain",
+      "status": 200,
+      "size": 256,
+      "headers": [],
+      "technologies": ["FTP", "vsftpd"],
+      "vulnerabilities": ["Anonymous FTP enabled"]
+    },
+    {
+      "value": "mywebsite.com/admin",
+      "type": "directory",
+      "status": 403,
+      "size": 0,
+      "headers": [
+        { "key": "Server", "value": "Apache/2.4.41" }
+      ],
+      "technologies": [],
+      "vulnerabilities": ["Admin panel accessible"]
+    },
+    {
+      "value": "mywebsite.com/wp-content/uploads",
+      "type": "directory",
+      "status": 200,
+      "size": 4096,
+      "headers": [
+        { "key": "Content-Type", "value": "text/html" }
+      ],
+      "technologies": ["WordPress"],
+      "vulnerabilities": ["Directory listing enabled"]
+    },
+    {
+      "value": "mywebsite.com/api/v1/users",
+      "type": "endpoint",
+      "status": 200,
+      "size": 1024,
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ],
+      "technologies": ["REST API", "JSON"],
+      "vulnerabilities": ["No authentication required", "CORS misconfiguration"]
+    },
+    {
+      "value": "mywebsite.com/config.php.bak",
+      "type": "file",
+      "status": 200,
+      "size": 2048,
+      "headers": [
+        { "key": "Content-Type", "value": "application/octet-stream" }
+      ],
+      "technologies": ["PHP"],
+      "vulnerabilities": ["Configuration backup exposed", "Sensitive file disclosure"]
+    },
+    {
+      "value": "mywebsite.com/.env",
+      "type": "file",
+      "status": 200,
+      "size": 512,
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain" }
+      ],
+      "technologies": [],
+      "vulnerabilities": ["Environment file exposed", "Database credentials disclosure"]
+    }
+  ],
+  "relationships": [
+    { "source": "mywebsite.com", "target": "www.mywebsite.com", "type": "contains" },
+    { "source": "mywebsite.com", "target": "mail.mywebsite.com", "type": "contains" },
+    { "source": "mywebsite.com", "target": "ftp.mywebsite.com", "type": "contains" },
+    { "source": "mywebsite.com", "target": "mywebsite.com/admin", "type": "contains" },
+    { "source": "mywebsite.com", "target": "mywebsite.com/wp-content/uploads", "type": "contains" },
+    { "source": "mywebsite.com", "target": "mywebsite.com/api/v1/users", "type": "contains" },
+    { "source": "mywebsite.com", "target": "mywebsite.com/config.php.bak", "type": "contains" },
+    { "source": "mywebsite.com", "target": "mywebsite.com/.env", "type": "contains" }
+  ]
+}

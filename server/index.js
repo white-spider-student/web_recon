@@ -35,18 +35,12 @@ function initializeDatabase() {
   db.run(`CREATE TABLE IF NOT EXISTS nodes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     website_id INTEGER NOT NULL,
-    node_id TEXT NOT NULL,
+    value TEXT NOT NULL,
     type TEXT,
-    group_name TEXT,
-    status TEXT,
-    response_size TEXT,
-    method TEXT,
-    file_type TEXT,
-    description TEXT,
+    status INTEGER,
+    size INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (website_id) REFERENCES websites(id) ON DELETE CASCADE,
-    UNIQUE(website_id, node_id)
+    FOREIGN KEY (website_id) REFERENCES websites(id) ON DELETE CASCADE
   )`, (err) => {
     if (err) console.error('Error creating nodes table:', err.message);
   });
@@ -102,19 +96,8 @@ function initializeDatabase() {
 function createIndexes() {
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_nodes_website_id ON nodes(website_id)',
-    'CREATE INDEX IF NOT EXISTS idx_node_headers_node_id ON node_headers(node_id)',
-    'CREATE INDEX IF NOT EXISTS idx_node_technologies_node_id ON node_technologies(node_id)',
-    'CREATE INDEX IF NOT EXISTS idx_node_vulnerabilities_node_id ON node_vulnerabilities(node_id)',
-    'CREATE INDEX IF NOT EXISTS idx_node_relationships_source ON node_relationships(source_node_id)',
-    'CREATE INDEX IF NOT EXISTS idx_node_relationships_target ON node_relationships(target_node_id)',
-    'CREATE INDEX IF NOT EXISTS idx_nodes_website_node_id ON nodes(website_id, node_id)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type)',
-    'CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status)',
-    'CREATE INDEX IF NOT EXISTS idx_nodes_last_seen ON nodes(last_seen)',
-    'CREATE INDEX IF NOT EXISTS idx_websites_last_scan ON websites(last_scan)',
-    'CREATE INDEX IF NOT EXISTS idx_nodes_file_type ON nodes(file_type)',
-    'CREATE INDEX IF NOT EXISTS idx_nodes_website_type ON nodes(website_id, type)',
-    'CREATE INDEX IF NOT EXISTS idx_nodes_website_status ON nodes(website_id, status)'
+    'CREATE INDEX IF NOT EXISTS idx_nodes_value ON nodes(value)'
   ];
   
   indexes.forEach(index => {
@@ -152,66 +135,72 @@ app.post('/websites', (req, res) => {
 });
 
 // Get all nodes for a specific website
-app.get('/websites/:websiteId/nodes', (req, res) => {
-  const websiteId = req.params.websiteId;
-  const query = `
-    SELECT n.*, 
-           json_group_array(json_object('key', h.header_key, 'value', h.header_value)) as headers,
-           json_group_array(t.technology) as technologies,
-           json_group_array(v.vulnerability) as vulnerabilities
-    FROM nodes n
-    LEFT JOIN node_headers h ON n.id = h.node_id
-    LEFT JOIN node_technologies t ON n.id = t.node_id
-    LEFT JOIN node_vulnerabilities v ON n.id = v.node_id
-    WHERE n.website_id = ?
-    GROUP BY n.id
-  `;
-  
-  db.all(query, [websiteId], (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else {
-      // Process the results to format them properly
-      const processedRows = rows.map(row => {
-        // Parse headers
-        let headers = [];
-        try {
-          headers = JSON.parse(row.headers);
-          // Filter out null values and format properly
-          headers = headers.filter(h => h.key !== null);
-        } catch (e) {
-          headers = [];
-        }
-        
-        // Parse technologies
-        let technologies = [];
-        try {
-          technologies = JSON.parse(row.technologies);
-          technologies = technologies.filter(t => t !== null);
-        } catch (e) {
-          technologies = [];
-        }
-        
-        // Parse vulnerabilities
-        let vulnerabilities = [];
-        try {
-          vulnerabilities = JSON.parse(row.vulnerabilities);
-          vulnerabilities = vulnerabilities.filter(v => v !== null);
-        } catch (e) {
-          vulnerabilities = [];
-        }
-        
-        return {
-          ...row,
-          headers,
-          technologies,
-          vulnerabilities
-        };
+app.get('/websites/:websiteId/nodes', async (req, res) => {
+  const { websiteId } = req.params;
+  console.log('Fetching nodes for website:', websiteId);
+
+  try {
+    const nodesQuery = `
+      SELECT 
+        id,
+        value,
+        type,
+        status,
+        size
+      FROM nodes 
+      WHERE website_id = ?
+    `;
+    
+    // Log the count of nodes
+    db.get('SELECT COUNT(*) as count FROM nodes WHERE website_id = ?', [websiteId], (err, row) => {
+      if (err) console.error('Error counting nodes:', err);
+      else console.log('Number of nodes found:', row.count);
+    });
+    
+    const relationshipsQuery = `
+      SELECT 
+        source_node_id as source,
+        target_node_id as target,
+        'contains' as type
+      FROM node_relationships 
+      WHERE EXISTS (
+        SELECT 1 FROM nodes 
+        WHERE nodes.id = node_relationships.source_node_id 
+        AND nodes.website_id = ?
+      )
+    `;
+
+    const nodes = await new Promise((resolve, reject) => {
+      db.all(nodesQuery, [websiteId], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows.map(node => ({
+          id: String(node.id),
+          label: node.value,
+          group: node.type || 'unknown',
+          type: node.type || 'unknown',
+          value: node.value,
+          status: node.status,
+          size: node.size
+        })));
       });
-      
-      res.json(processedRows);
-    }
-  });
+    });
+
+    const relationships = await new Promise((resolve, reject) => {
+      db.all(relationshipsQuery, [websiteId], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    res.json({
+      nodes,
+      relationships
+    });
+
+  } catch (err) {
+    console.error('Error fetching nodes and relationships:', err.message);
+    res.status(500).json({ error: 'Failed to fetch graph data', details: err.message });
+  }
 });
 
 // Get all nodes (across all websites)

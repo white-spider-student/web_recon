@@ -147,36 +147,27 @@ export default function App() {
         websiteId = websites[0].id;
       }
       
-      // Fetch nodes for the website
-      const nodesResponse = await axios.get(`http://localhost:3001/websites/${websiteId}/nodes`);
-      const nodes = nodesResponse.data;
+      // Fetch nodes and relationships for the website
+      const response = await axios.get(`http://localhost:3001/websites/${websiteId}/nodes`);
+      const { nodes, relationships } = response.data;
       
       // Transform nodes to match the expected format
       const transformedNodes = nodes.map(node => ({
-        id: node.node_id,
-        group: node.group_name || node.type,
+        id: node.id,
+        group: node.type,
         type: node.type,
-        status: node.status,
-        method: node.method,
-        fileType: node.file_type,
-        desc: node.description,
-        responseSize: node.response_size,
-        headers: node.headers || [],
-        technologies: node.technologies || [],
-        vulnerabilities: node.vulnerabilities || []
+        value: node.value,
+        website_id: node.website_id,
+        label: node.value // Add label to show the value in the graph
       }));
       
-      // Create some dummy links for visualization since the database likely doesn't have relationships yet
-      const links = [];
-      if (transformedNodes.length > 1) {
-        for (let i = 0; i < transformedNodes.length - 1; i++) {
-          links.push({
-            source: transformedNodes[i].id,
-            target: transformedNodes[i + 1].id
-          });
-        }
-      }
-      
+      // Transform relationships into links
+      const links = relationships.map(rel => ({
+        source: rel.source_id,
+        target: rel.target_id,
+        type: rel.type
+      }));
+
       setGraphData({ nodes: transformedNodes, links });
     } catch (err) {
       console.error('Error fetching data:', err);

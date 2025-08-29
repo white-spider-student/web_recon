@@ -6,6 +6,8 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
   const containerRef = useRef(null);
   const fgRef = useRef(null);
   const prevSpacingRef = useRef(null);
+  const [size, setSize] = useState({ width: 800, height: 520 });
+
   // Expose a simple zoomToNode function globally for external control
   useEffect(() => {
     window.graphInstance = {
@@ -18,8 +20,8 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
       }
     };
   }, [data]);
+
   const nodesAddedAt = useRef(new Map()); // nodeId -> timestamp when first seen
-  const [size, setSize] = useState({ width: 800, height: 520 });
 
   // build quick lookup sets for highlights / path links
   const highlightedSet = new Set((highlightedNodes || []).map(String));
@@ -73,9 +75,10 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
     if (!node || !node.group) return '#bbb';
     switch (node.group) {
       case 'subdomain': return 'rgba(45,226,230,0.95)'; // cyan
-      case 'directory': return 'rgba(59,130,246,0.95)'; // blue
-      case 'endpoint': return 'rgba(251,146,60,0.95)'; // orange
-      case 'domain': return 'rgba(45,226,230,0.95)';
+      case 'ip': return 'rgba(251,146,60,0.95)'; // orange
+      case 'technology': return 'rgba(59,130,246,0.95)'; // blue
+      case 'port': return 'rgba(167,139,250,0.95)'; // purple
+      case 'service': return 'rgba(52,211,153,0.95)'; // green
       default: return '#bbb';
     }
   };
@@ -252,55 +255,34 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath 
   }, []);
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
       <ForceGraph2D
         ref={fgRef}
         width={size.width}
         height={size.height}
         graphData={data}
-        nodeLabel="id"
-        nodeRelSize={6}
-        nodeAutoColorBy={null}
         nodeColor={nodeColor}
-        // color links lighter by default, path links stronger
-        linkColor={(l) => {
-          try {
-            const a = typeof l.source === 'object' ? l.source.id : l.source;
-            const b = typeof l.target === 'object' ? l.target.id : l.target;
-            const isPath = pathLinks.current.has(`${a}~${b}`);
-            if (isPath) return 'rgba(45,226,230,0.95)';
-            return 'rgba(255,255,255,0.06)';
-          } catch (e) { return 'rgba(255,255,255,0.06)'; }
-        }}
-        linkWidth={(l) => {
-          try {
-            const a = typeof l.source === 'object' ? l.source.id : l.source;
-            const b = typeof l.target === 'object' ? l.target.id : l.target;
-            const isPath = pathLinks.current.has(`${a}~${b}`);
-            if (isPath) return 3;
-            return 1;
-          } catch (e) { return 1; }
-        }}
-        // animated directional particles along links
-        linkDirectionalParticles={1}
-        linkDirectionalParticleWidth={() => 1.2}
-        linkDirectionalParticleColor={(l) => {
-          try {
-            const a = typeof l.source === 'object' ? l.source.id : l.source;
-            const b = typeof l.target === 'object' ? l.target.id : l.target;
-            return pathLinks.current.has(`${a}~${b}`) ? 'rgba(45,226,230,1)' : 'rgba(45,226,230,0.6)';
-          } catch (e) { return 'rgba(45,226,230,0.6)'; }
-        }}
-      
+        nodeLabel={node => `${node.type}: ${node.value}`}
         onNodeClick={handleNodeClick}
-        d3AlphaDecay={0.08}
-        d3VelocityDecay={0.7}
-        enableNodeDrag={true}
-        nodeCanvasObject={nodeCanvasObject}
-        minZoom={0.4}
-        maxZoom={4}
+        nodeVal={n => 5}
+        linkDirectionalArrowLength={3}
+        linkDirectionalArrowRelPos={1}
+        nodeCanvasObject={(node, ctx, globalScale) => {
+          const label = `${node.type}: ${node.value}`;
+          const fontSize = 12/globalScale;
+          ctx.font = `${fontSize}px Sans-Serif`;
+          ctx.fillStyle = nodeColor(node);
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, 5, 0, 2 * Math.PI, false);
+          ctx.fill();
+          
+          // Draw label
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'white';
+          ctx.fillText(label, node.x, node.y + 10);
+        }}
       />
-
     </div>
   );
 };

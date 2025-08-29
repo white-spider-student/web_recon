@@ -1,71 +1,118 @@
-# Getting Started with Create React App
+# Web Recon Map
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Web Recon Map is a full-stack web application for visualizing the structure and relationships of nodes (such as subdomains, directories, endpoints, technologies, and vulnerabilities) discovered during web reconnaissance. It features a React-based interactive graph UI and a Node.js/Express backend with a normalized SQLite database schema.
+
+## Features
+
+- **Interactive Graph Visualization:** Explore discovered nodes and their relationships using a force-directed graph.
+- **Multi-Website Support:** Manage and visualize data for multiple target websites.
+- **Node Details Panel:** View HTTP status, headers, technologies, and vulnerability hints for each node.
+- **Filtering & Search:** Filter nodes by status, technology, type, method, and file type. Search nodes and highlight paths.
+- **API Server:** RESTful API for managing websites, nodes, and relationships.
+- **Database Schema:** Normalized SQLite schema with tables for websites, nodes, headers, technologies, vulnerabilities, and relationships.
+
+## Project Structure
+
+```
+.
+├── public/                # Static assets and HTML template
+├── src/                   # React frontend source code
+│   ├── components/        # React components (Graph, DetailsPanel)
+│   └── App.js             # Main application
+├── server/                # Node.js/Express backend and database scripts
+│   ├── index.js           # API server
+│   ├── migrate.js         # Database migration script
+│   ├── seed-data.js       # Sample data seeding script
+│   ├── test-schema.js     # Schema validation script
+│   └── view-data.js       # Data viewing utility
+├── package.json           # Frontend dependencies and scripts
+└── README.md             # Project documentation
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v16+ recommended)
+- npm
+
+### Setup
+
+#### 1. Install Frontend Dependencies
+
+```sh
+npm install
+```
+
+#### 2. Install Backend Dependencies
+
+```sh
+cd server
+npm install
+```
+
+#### 3. Initialize the Database
+
+You can seed the database with sample data:
+
+```sh
+node seed-data.js
+```
+
+Or migrate an existing database to the new schema:
+
+```sh
+node migrate.js
+```
+
+#### 4. Start the Backend Server
+
+```sh
+node index.js
+```
+
+The API server will run at [http://localhost:3001](http://localhost:3001).
+
+#### 5. Start the Frontend
+
+In the project root:
+
+```sh
+npm start
+```
+
+The React app will run at [http://localhost:3000](http://localhost:3000).
+
+## API Endpoints
+
+- `GET /websites` — List all websites
+- `POST /websites` — Create a new website
+- `GET /websites/:websiteId/nodes` — Get nodes and relationships for a website
+- `POST /websites/:websiteId/nodes` — Add a node to a website
+- `POST /nodes/:sourceNodeId/relationships/:targetNodeId` — Create a relationship
+- `GET /nodes/:nodeId/relationships` — Get relationships for a node
+
+See `server/schema-documentation.md` for full schema details.
 
 ## Available Scripts
-
-In the project directory, you can run:
 
 ### `npm start`
 
 Runs the app in the development mode.\
 Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
-
 ### `npm test`
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Launches the test runner in the interactive watch mode.
 
 ### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Builds the app for production to the `build` folder.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## License
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+MIT
 
-### `npm run eject`
+---
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
-# web_recon
+*Made with React, D3, and Express. For educational and research purposes.*
