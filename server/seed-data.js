@@ -1,124 +1,118 @@
 const sqlite3 = require('sqlite3').verbose();
-const fs = require('fs');
-
-// Read the JSON file
-const reconData = require('./example-recon.json');
-
-// Connect to SQLite database
 const db = new sqlite3.Database('./data.db');
 
-// Insert data
-db.serialize(() => {
-    db.run('BEGIN TRANSACTION');
+// Clear existing data
+function clearTables() {
+    const tables = [
+        'node_relationships',
+        'nodes',
+        'websites'
+    ];
+    
+    db.serialize(() => {
+        db.run('PRAGMA foreign_keys = OFF');
+        tables.forEach(table => {
+            db.run(`DELETE FROM ${table}`);
+            db.run(`DELETE FROM sqlite_sequence WHERE name='${table}'`);
+        });
+        db.run('PRAGMA foreign_keys = ON');
+    });
+}
 
-    // Insert website
-    db.run(`INSERT INTO websites (url, name) VALUES (?, ?)`, 
-        [reconData.domain, reconData.domain],
+// Seed data
+async function seedData() {
+    clearTables();
+    
+    // Add example website
+    db.run(`INSERT INTO websites (id, url, name) VALUES (?, ?, ?)`,
+        [1, 'https://example.com', 'Example Corp'],
         function(err) {
             if (err) {
-                console.error('Error inserting website:', err);
-                db.run('ROLLBACK');
+                console.error('Error adding website:', err.message);
                 return;
             }
+            
+            const nodes = [
+                // Main domain and subdomains
+                [1, 'example.com', 'domain', 200, 1024],
+                [1, 'api.example.com', 'subdomain', 200, 512],
+                [1, 'admin.example.com', 'subdomain', 401, 256],
+                [1, 'dev.example.com', 'subdomain', 403, 256],
+                
+                // Directories
+                [1, '/admin', 'directory', 302, 512],
+                [1, '/api/v1', 'directory', 200, 1024],
+                [1, '/uploads', 'directory', 403, 256],
+                [1, '/backup', 'directory', 403, 128],
+                
+                // Files
+                [1, '/robots.txt', 'file', 200, 128],
+                [1, '/sitemap.xml', 'file', 200, 2048],
+                [1, '/.env.backup', 'file', 403, 0],
+                [1, '/package.json', 'file', 403, 0],
+                
+                // Endpoints
+                [1, '/api/v1/users', 'endpoint', 200, 2048],
+                [1, '/api/v1/login', 'endpoint', 200, 512],
+                [1, '/api/v1/admin/users', 'endpoint', 401, 0]
+            ];
 
-            const websiteId = this.lastID;
-            console.log('Website inserted with ID:', websiteId);
+            db.serialize(() => {
+                const stmt = db.prepare(`
+                    INSERT INTO nodes (website_id, value, type, status, size) 
+                    VALUES (?, ?, ?, ?, ?)
+                `);
 
-            // Insert nodes and collect their IDs
-            const nodeIds = new Map();
-
-            // Prepare statements
-            const nodeStmt = db.prepare(`
-                INSERT INTO nodes (website_id, value, type, status, size)
-                VALUES (?, ?, ?, ?, ?)
-            `);
-
-            const headerStmt = db.prepare(`
-                INSERT INTO node_headers (node_id, header_key, header_value)
-                VALUES (?, ?, ?)
-            `);
-
-            const techStmt = db.prepare(`
-                INSERT INTO node_technologies (node_id, technology)
-                VALUES (?, ?)
-            `);
-
-            const vulnStmt = db.prepare(`
-                INSERT INTO node_vulnerabilities (node_id, vulnerability)
-                VALUES (?, ?)
-            `);
-
-            const relStmt = db.prepare(`
-                INSERT INTO node_relationships (source_node_id, target_node_id, relationship_type)
-                VALUES (?, ?, ?)
-            `);
-
-            // Insert nodes first
-            reconData.nodes.forEach(node => {
-                nodeStmt.run(
-                    websiteId,
-                    node.value || node.label,
-                    node.type,
-                    node.status || 200,
-                    node.size || 0,
-                    function(err) {
-                        if (err) {
-                            console.error('Error inserting node:', err);
-                            return;
-                        }
-
-                        const nodeId = this.lastID;
-                        nodeIds.set(node.value || node.label, nodeId);
-
-                        // Insert headers
-                        if (node.headers) {
-                            node.headers.forEach(header => {
-                                headerStmt.run(nodeId, header.key || header.name, header.value);
-                            });
-                        }
-
-                        // Insert technologies
-                        if (node.technologies) {
-                            node.technologies.forEach(tech => {
-                                techStmt.run(nodeId, tech);
-                            });
-                        }
-
-                        // Insert vulnerabilities
-                        if (node.vulnerabilities) {
-                            node.vulnerabilities.forEach(vuln => {
-                                vulnStmt.run(nodeId, typeof vuln === 'string' ? vuln : vuln.type);
-                            });
-                        }
-                    }
-                );
+                nodes.forEach(node => stmt.run(node));
+                stmt.finalize();
             });
 
-            // Insert relationships
-            reconData.relationships.forEach(rel => {
-                const sourceId = nodeIds.get(rel.source === "1" ? reconData.domain : rel.source);
-                const targetId = nodeIds.get(rel.target);
-                if (sourceId && targetId) {
-                    relStmt.run(sourceId, targetId, rel.type);
-                }
-            });
+            // After nodes are inserted, create relationships
+            setTimeout(() => {
+                const relationships = [
+                    // Domain relationships
+                    [1, 2],  // example.com -> api.example.com
+                    [1, 3],  // example.com -> admin.example.com
+                    [1, 4],  // example.com -> dev.example.com
+                    
+                    // Directory relationships
+                    [1, 5],  // example.com -> /admin
+                    [1, 6],  // example.com -> /api/v1
+                    [1, 7],  // example.com -> /uploads
+                    [1, 8],  // example.com -> /backup
+                    
+                    // File relationships
+                    [1, 9],  // example.com -> robots.txt
+                    [1, 10], // example.com -> sitemap.xml
+                    [1, 11], // example.com -> .env.backup
+                    [1, 12], // example.com -> package.json
+                    
+                    // API endpoint relationships
+                    [2, 13], // api.example.com -> /api/v1/users
+                    [2, 14], // api.example.com -> /api/v1/login
+                    [2, 15], // api.example.com -> /api/v1/admin/users
+                    
+                    // Directory to endpoint relationships
+                    [6, 13], // /api/v1 -> /api/v1/users
+                    [6, 14], // /api/v1 -> /api/v1/login
+                    [6, 15]  // /api/v1 -> /api/v1/admin/users
+                ];
 
-            // Finalize all statements
-            nodeStmt.finalize();
-            headerStmt.finalize();
-            techStmt.finalize();
-            vulnStmt.finalize();
-            relStmt.finalize();
+                const relStmt = db.prepare(`
+                    INSERT INTO node_relationships (source_node_id, target_node_id)
+                    VALUES (?, ?)
+                `);
 
-            // Commit transaction
-            db.run('COMMIT', err => {
-                if (err) {
-                    console.error('Error committing transaction:', err);
-                    db.run('ROLLBACK');
-                } else {
-                    console.log('All data inserted successfully!');
-                }
-            });
+                relationships.forEach(rel => relStmt.run(rel));
+                relStmt.finalize();
+
+                console.log('Database seeded successfully!');
+            }, 1000); // Wait 1 second for nodes to be inserted
         }
     );
+}
+
+// Run the seed
+seedData().catch(err => {
+    console.error('Error seeding database:', err);
 });
