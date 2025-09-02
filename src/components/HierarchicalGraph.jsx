@@ -3,21 +3,32 @@ import ForceGraph2D from 'react-force-graph-2d';
 import { forceManyBody, forceCollide, forceLink, forceCenter, forceRadial } from 'd3-force';
 
 export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], highlightPath = [] }) => {
-  // State for expand/collapse functionality
-  const [expandedNodes, setExpandedNodes] = useState(new Set());
-  
   const containerRef = useRef(null);
   const fgRef = useRef(null);
   const [size, setSize] = useState({ width: 800, height: 520 });
+  const [levels, setLevels] = useState(new Map());
 
-  // Debug: Log graph data when it changes
+  // Compute node levels and update forces
   useEffect(() => {
-    if (data && data.nodes && data.links) {
-      console.log('HierarchicalGraph received data:', {
-        nodeCount: data.nodes.length,
-        linkCount: data.links.length,
-        nodeTypes: [...new Set(data.nodes.map(n => n.type))]
-      });
+    if (!data?.nodes?.length || !fgRef.current) return;
+
+    const fg = fgRef.current;
+    const rootNode = data.nodes.find(n => n.type === 'domain');
+    if (!rootNode) return;
+
+    // Assign hierarchical levels
+    const newLevels = new Map();
+    data.nodes.forEach(node => {
+      switch(node.type) {
+        case 'domain': newLevels.set(node.id, 0); break;
+        case 'subdomain': newLevels.set(node.id, 1); break;
+        case 'directory': newLevels.set(node.id, 2); break;
+        case 'endpoint':
+        case 'file': newLevels.set(node.id, 3); break;
+        default: newLevels.set(node.id, 4);
+      }
+    });
+    setLevels(newLevels);
       
       // Auto-expand root domain on initial load
       const rootNode = data.nodes.find(n => n.type === 'domain');

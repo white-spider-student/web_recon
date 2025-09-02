@@ -1,0 +1,37 @@
+.graph-controls button {
+  width: 36px;
+  height: 36px;
+  background: rgba(20, 20, 20, 0.8);
+  border: 1px solid #2de2e6;
+  color: #2de2e6;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.graph-controls button:hover {
+  background: rgba(45, 226, 230, 0.2);
+  transform: scale(1.05);
+}
+
+.graph-controls button:active {
+  transform: scale(0.95);
+}
+
+.graph-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-button {
+  font-size: 16px !important;
+}

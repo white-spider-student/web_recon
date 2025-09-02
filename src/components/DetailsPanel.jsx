@@ -1,14 +1,23 @@
 import React from 'react';
+import './DetailsPanel.css';
 
 export const DetailsPanel = ({ node, onClose }) => {
-  const status = node?.status || (String(node?.id || '').includes('adm') ? '403 Forbidden' : '200 OK');
-  const responseSize = node?.responseSize || '2.4 KB';
-  const headers = node?.headers || [
-    { key: 'Content-Type', value: 'text/html' },
-    { key: 'Content-Length', value: '2457' }
-  ];
-  const technologies = node?.technologies || ['Apache', 'React'];
-  const vulnerabilities = node?.vulnerabilities || ['Open directory'];
+  if (!node) return null;
+
+  // Convert status to string and handle default values
+  const status = String(node.status || '200');
+  const responseSize = node.size ? `${node.size} bytes` : 'Unknown';
+  const headers = node.headers || [];
+  const technologies = node.technologies || [];
+  const vulnerabilities = node.vulnerabilities || [];
+
+  const getStatusClass = (statusStr) => {
+    if (statusStr.startsWith('2')) return 'status success';
+    if (statusStr.startsWith('3')) return 'status redirect';
+    if (statusStr.startsWith('4')) return 'status client-error';
+    if (statusStr.startsWith('5')) return 'status server-error';
+    return 'status unknown';
+  };
 
   return (
     <aside className="details-panel">
@@ -35,12 +44,17 @@ export const DetailsPanel = ({ node, onClose }) => {
 
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>Status Code</div>
-        <div className={status.startsWith('200') ? 'status' : 'status error'} style={{ marginTop: 6 }}>{status}</div>
+        <div className={getStatusClass(status)} style={{ marginTop: 6 }}>{status}</div>
       </div>
 
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>Response Size</div>
         <div style={{ marginTop: 6 }}>{responseSize}</div>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Type</div>
+        <div style={{ marginTop: 6 }}>{node.type || 'Unknown'}</div>
       </div>
 
       <div className="headers" style={{ marginBottom: 12 }}>

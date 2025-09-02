@@ -3,7 +3,7 @@ import ForceGraph2D from 'react-force-graph-2d';
 import { forceManyBody, forceCollide, forceLink, forceCenter, forceRadial } from 'd3-force';
 import './Graph.css';
 
-export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes = [] }) => {
+export const Graph = ({ data, onNodeClick, highlightedNodes = [], highlightPath = [] }) => {
   const containerRef = useRef(null);
   const fgRef = useRef(null);
   const [size, setSize] = useState({ width: 800, height: 520 });
@@ -11,8 +11,20 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
   const nodesAddedAt = useRef(new Map());
 
   // Build lookup sets for highlights
-  const highlightedSet = new Set(highlightedNodes.map(String));
-  const similarNodesSet = new Set(similarNodes.map(String));
+  const highlightedSet = new Set((highlightedNodes || []).map(String));
+  const pathLinks = useRef(new Set());
+
+  useEffect(() => {
+    const p = highlightPath || [];
+    const s = new Set();
+    for (let i = 0; i < p.length - 1; i++) {
+      const a = String(p[i]);
+      const b = String(p[i + 1]);
+      s.add(`${a}~${b}`);
+      s.add(`${b}~${a}`);
+    }
+    pathLinks.current = s;
+  }, [highlightPath]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -138,22 +150,16 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
         nodeLabel={node => node.label || node.id}
         nodeRelSize={6}
         linkColor={link => {
-          const sourceId = String(typeof link.source === 'object' ? link.source.id : link.source);
-          const targetId = String(typeof link.target === 'object' ? link.target.id : link.target);
-          const isHighlighted = highlightedSet.has(sourceId) || highlightedSet.has(targetId);
-          const isSimilar = similarNodesSet.has(sourceId) || similarNodesSet.has(targetId);
-          
-          if (isHighlighted) return 'rgba(45,226,230,0.6)';
-          if (isSimilar) return 'rgba(251,146,60,0.6)';
-          return 'rgba(255,255,255,0.2)';
+          const isHighlighted = highlightedSet.has(String(link.source.id)) || 
+                               highlightedSet.has(String(link.target.id)) ||
+                               pathLinks.current.has(`${link.source.id}~${link.target.id}`);
+          return isHighlighted ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)';
         }}
         linkWidth={link => {
-          const sourceId = String(typeof link.source === 'object' ? link.source.id : link.source);
-          const targetId = String(typeof link.target === 'object' ? link.target.id : link.target);
-          const isHighlighted = highlightedSet.has(sourceId) || highlightedSet.has(targetId);
-          const isSimilar = similarNodesSet.has(sourceId) || similarNodesSet.has(targetId);
-          
-          return isHighlighted || isSimilar ? 2 : 1;
+          const isHighlighted = highlightedSet.has(String(link.source.id)) || 
+                               highlightedSet.has(String(link.target.id)) ||
+                               pathLinks.current.has(`${link.source.id}~${link.target.id}`);
+          return isHighlighted ? 2 : 1;
         }}
         onNodeClick={handleNodeClick}
         width={size.width}
@@ -163,8 +169,7 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
           const fontSize = node.type === 'domain' ? 14 : 12;
           ctx.font = `${fontSize}px Arial`;
           const nodeColor = getNodeColor(node);
-          const isHighlighted = highlightedSet.has(String(node.id));
-          const isSimilar = similarNodesSet.has(String(node.id));
+          const isHighlighted = highlightedSet.has(String(node.id)) || highlightPath?.includes(node.id);
           const radius = 6;
 
           // Draw glow effect for highlighted nodes
