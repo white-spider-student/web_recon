@@ -20,77 +20,17 @@ const db = new sqlite3.Database('./data.db', (err) => {
 });
 
 function initializeDatabase() {
-  // Create websites table
-  db.run(`CREATE TABLE IF NOT EXISTS websites (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT UNIQUE NOT NULL,
-    name TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_scan TIMESTAMP
-  )`, (err) => {
-    if (err) console.error('Error creating websites table:', err.message);
-  });
+  const fs = require('fs');
+  const schema = fs.readFileSync('./schema.sql', 'utf8');
   
-  // Create nodes table
-  db.run(`CREATE TABLE IF NOT EXISTS nodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    website_id INTEGER NOT NULL,
-    value TEXT NOT NULL,
-    type TEXT,
-    status INTEGER,
-    size INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (website_id) REFERENCES websites(id) ON DELETE CASCADE
-  )`, (err) => {
-    if (err) console.error('Error creating nodes table:', err.message);
+  // Execute schema file
+  db.exec(schema, (err) => {
+    if (err) {
+      console.error('Error initializing database:', err.message);
+    } else {
+      console.log('Database initialized successfully');
+    }
   });
-  
-  // Create node_headers table
-  db.run(`CREATE TABLE IF NOT EXISTS node_headers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    node_id INTEGER NOT NULL,
-    header_key TEXT NOT NULL,
-    header_value TEXT NOT NULL,
-    FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
-  )`, (err) => {
-    if (err) console.error('Error creating node_headers table:', err.message);
-  });
-  
-  // Create node_technologies table
-  db.run(`CREATE TABLE IF NOT EXISTS node_technologies (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    node_id INTEGER NOT NULL,
-    technology TEXT NOT NULL,
-    FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
-  )`, (err) => {
-    if (err) console.error('Error creating node_technologies table:', err.message);
-  });
-  
-  // Create node_vulnerabilities table
-  db.run(`CREATE TABLE IF NOT EXISTS node_vulnerabilities (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    node_id INTEGER NOT NULL,
-    vulnerability TEXT NOT NULL,
-    FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
-  )`, (err) => {
-    if (err) console.error('Error creating node_vulnerabilities table:', err.message);
-  });
-  
-  // Create node_relationships table
-  db.run(`CREATE TABLE IF NOT EXISTS node_relationships (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_node_id INTEGER NOT NULL,
-    target_node_id INTEGER NOT NULL,
-    relationship_type TEXT,
-    FOREIGN KEY (source_node_id) REFERENCES nodes(id) ON DELETE CASCADE,
-    FOREIGN KEY (target_node_id) REFERENCES nodes(id) ON DELETE CASCADE,
-    UNIQUE(source_node_id, target_node_id)
-  )`, (err) => {
-    if (err) console.error('Error creating node_relationships table:', err.message);
-  });
-  
-  // Create indexes
-  createIndexes();
 }
 
 function createIndexes() {

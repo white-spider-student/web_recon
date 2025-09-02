@@ -1,59 +1,206 @@
 {
+  "domain": "fintekpay.com",
   "nodes": [
-    {"id":"1","label":"omnixplatform.com","group":"domain","type":"domain","value":"omnixplatform.com","status":200,"size":4096},
-    {"id":"2","label":"shop.omnixplatform.com","group":"subdomain","type":"subdomain","value":"shop.omnixplatform.com","status":200,"size":2500},
-    {"id":"3","label":"bank.omnixplatform.com","group":"subdomain","type":"subdomain","value":"bank.omnixplatform.com","status":200,"size":3000},
-    {"id":"4","label":"admin.omnixplatform.com","group":"subdomain","type":"subdomain","value":"admin.omnixplatform.com","status":403,"size":0},
-    {"id":"5","label":"dev.omnixplatform.com","group":"subdomain","type":"subdomain","value":"dev.omnixplatform.com","status":200,"size":1800},
-    {"id":"6","label":"status.omnixplatform.com","group":"subdomain","type":"subdomain","value":"status.omnixplatform.com","status":200,"size":1024},
-    {"id":"7","label":"support.omnixplatform.com","group":"subdomain","type":"subdomain","value":"support.omnixplatform.com","status":200,"size":1500},
-    {"id":"8","label":"omnixplatform.com/products","group":"directory","type":"directory","value":"omnixplatform.com/products","status":200,"size":4096},
-    {"id":"9","label":"omnixplatform.com/cart","group":"directory","type":"directory","value":"omnixplatform.com/cart","status":200,"size":1024},
-    {"id":"10","label":"omnixplatform.com/checkout","group":"directory","type":"directory","value":"omnixplatform.com/checkout","status":200,"size":2048},
-    {"id":"11","label":"omnixplatform.com/uploads","group":"directory","type":"directory","value":"omnixplatform.com/uploads","status":200,"size":1024},
-    {"id":"12","label":"omnixplatform.com/api/v1/users","group":"endpoint","type":"endpoint","value":"omnixplatform.com/api/v1/users","status":200,"size":1024},
-    {"id":"13","label":"omnixplatform.com/api/v1/orders","group":"endpoint","type":"endpoint","value":"omnixplatform.com/api/v1/orders","status":200,"size":1500},
-    {"id":"14","label":"omnixplatform.com/api/v1/account","group":"endpoint","type":"endpoint","value":"omnixplatform.com/api/v1/account","status":200,"size":1500},
-    {"id":"15","label":"omnixplatform.com/api/v1/transfer","group":"endpoint","type":"endpoint","value":"omnixplatform.com/api/v1/transfer","status":200,"size":1200},
-    {"id":"16","label":"omnixplatform.com/config.php.bak","group":"file","type":"file","value":"omnixplatform.com/config.php.bak","status":200,"size":2048},
-    {"id":"17","label":"omnixplatform.com/.env","group":"file","type":"file","value":"omnixplatform.com/.env","status":200,"size":512},
-    {"id":"18","label":"omnixplatform.com/backup.sql","group":"file","type":"file","value":"omnixplatform.com/backup.sql","status":200,"size":8192},
-    {"id":"19","label":"omnixplatform.com/private.key","group":"file","type":"file","value":"omnixplatform.com/private.key","status":200,"size":2048},
-    {"id":"20","label":"omnixplatform.com/admin","group":"directory","type":"directory","value":"omnixplatform.com/admin","status":403,"size":0},
-    {"id":"21","label":"cdn.omnixplatform.com","group":"subdomain","type":"subdomain","value":"cdn.omnixplatform.com","status":200,"size":1024},
-    {"id":"22","label":"app.omnixplatform.com","group":"subdomain","type":"subdomain","value":"app.omnixplatform.com","status":200,"size":2048},
-    {"id":"23","label":"www.omnixplatform.com","group":"subdomain","type":"subdomain","value":"www.omnixplatform.com","status":200,"size":3072}
+    {
+      "id": "1",
+      "type": "domain",
+      "label": "fintekpay.com",
+      "status": 200,
+      "size": 24816,
+      "headers": [
+        { "name": "Server", "value": "nginx/1.20.1" },
+        { "name": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "name": "Content-Security-Policy", "value": "default-src 'self'" }
+      ],
+      "technologies": ["Nginx", "React", "Node.js"],
+      "vulnerabilities": [],
+      "details": {
+        "ip": "203.0.113.42",
+        "lastScan": "2025-09-02",
+        "ssl": {
+          "issuer": "Let's Encrypt",
+          "validUntil": "2025-12-02"
+        }
+      }
+    },
+    {
+      "id": "2",
+      "type": "subdomain",
+      "label": "www.fintekpay.com",
+      "status": 200,
+      "size": 18432,
+      "headers": [
+        { "name": "Server", "value": "nginx/1.20.1" },
+        { "name": "Strict-Transport-Security", "value": "max-age=31536000" }
+      ],
+      "technologies": ["Nginx", "React", "Node.js"],
+      "vulnerabilities": []
+    },
+    {
+      "id": "3",
+      "type": "subdomain",
+      "label": "app.fintekpay.com",
+      "status": 200,
+      "size": 42560,
+      "headers": [
+        { "name": "Server", "value": "nginx/1.20.1" },
+        { "name": "X-Content-Type-Options", "value": "nosniff" }
+      ],
+      "technologies": ["Nginx", "React", "Node.js", "WebSocket"],
+      "vulnerabilities": []
+    },
+    {
+      "id": "4",
+      "type": "subdomain",
+      "label": "admin.fintekpay.com",
+      "status": 403,
+      "size": 1024,
+      "headers": [
+        { "name": "Server", "value": "nginx/1.20.1" },
+        { "name": "WWW-Authenticate", "value": "Basic" }
+      ],
+      "technologies": ["Nginx", "Vue.js", "Node.js"],
+      "vulnerabilities": [
+        {
+          "type": "Information Disclosure",
+          "severity": "Medium",
+          "description": "Server version exposed in headers"
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "type": "subdomain",
+      "label": "dev.fintekpay.com",
+      "status": 401,
+      "size": 856,
+      "headers": [
+        { "name": "Server", "value": "nginx/1.20.1" }
+      ],
+      "technologies": ["Nginx", "React", "Node.js"],
+      "vulnerabilities": [
+        {
+          "type": "Configuration",
+          "severity": "High",
+          "description": "Development environment accessible"
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "type": "subdomain",
+      "label": "cdn.fintekpay.com",
+      "status": 200,
+      "size": 128456,
+      "headers": [
+        { "name": "Server", "value": "cloudflare" },
+        { "name": "Cache-Control", "value": "public, max-age=86400" }
+      ],
+      "technologies": ["Cloudflare", "CDN"],
+      "vulnerabilities": []
+    },
+    {
+      "id": "7",
+      "type": "endpoint",
+      "label": "fintekpay.com/api",
+      "status": 200,
+      "size": 1240,
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "technologies": ["Node.js", "Express"],
+      "vulnerabilities": []
+    },
+    {
+      "id": "8",
+      "type": "endpoint",
+      "label": "fintekpay.com/api/v1/login",
+      "status": 200,
+      "size": 652,
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "technologies": ["Node.js", "JWT"],
+      "vulnerabilities": []
+    },
+    {
+      "id": "9",
+      "type": "endpoint",
+      "label": "fintekpay.com/api/v1/transfer",
+      "status": 401,
+      "size": 384,
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "technologies": ["Node.js", "JWT"],
+      "vulnerabilities": []
+    },
+    {
+      "id": "10",
+      "type": "file",
+      "label": "fintekpay.com/env",
+      "status": 403,
+      "size": 2048,
+      "headers": [
+        { "name": "Content-Type", "value": "text/plain" }
+      ],
+      "technologies": [],
+      "vulnerabilities": [
+        {
+          "type": "Information Disclosure",
+          "severity": "Critical",
+          "description": "Environment file potentially exposed"
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "type": "file",
+      "label": "fintekpay.com/backup.sql",
+      "status": 403,
+      "size": 2466544,
+      "headers": [
+        { "name": "Content-Type", "value": "application/octet-stream" }
+      ],
+      "technologies": ["MySQL"],
+      "vulnerabilities": [
+        {
+          "type": "Information Disclosure",
+          "severity": "Critical",
+          "description": "Database backup potentially exposed"
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "type": "file",
+      "label": "fintekpay.com/private.pem",
+      "status": 403,
+      "size": 1704,
+      "headers": [
+        { "name": "Content-Type", "value": "application/x-pem-file" }
+      ],
+      "technologies": [],
+      "vulnerabilities": [
+        {
+          "type": "Information Disclosure",
+          "severity": "Critical",
+          "description": "Private key potentially exposed"
+        }
+      ]
+    }
   ],
   "relationships": [
-    {"source":"1","target":"2","type":"contains"},
-    {"source":"1","target":"3","type":"contains"},
-    {"source":"1","target":"4","type":"contains"},
-    {"source":"1","target":"5","type":"contains"},
-    {"source":"1","target":"6","type":"contains"},
-    {"source":"1","target":"7","type":"contains"},
-    {"source":"1","target":"21","type":"contains"},
-    {"source":"1","target":"22","type":"contains"},
-    {"source":"1","target":"23","type":"contains"},
-    {"source":"1","target":"8","type":"contains"},
-    {"source":"1","target":"9","type":"contains"},
-    {"source":"1","target":"10","type":"contains"},
-    {"source":"1","target":"11","type":"contains"},
-    {"source":"1","target":"20","type":"contains"},
-    {"source":"8","target":"12","type":"contains"},
-    {"source":"9","target":"13","type":"contains"},
-    {"source":"10","target":"14","type":"contains"},
-    {"source":"11","target":"15","type":"contains"},
-    {"source":"1","target":"16","type":"contains"},
-    {"source":"1","target":"17","type":"contains"},
-    {"source":"1","target":"18","type":"contains"},
-    {"source":"1","target":"19","type":"contains"},
-    {"source":"23","target":"8","type":"contains"},
-    {"source":"23","target":"9","type":"contains"},
-    {"source":"23","target":"10","type":"contains"},
-    {"source":"22","target":"12","type":"contains"},
-    {"source":"22","target":"14","type":"contains"},
-    {"source":"3","target":"15","type":"contains"},
-    {"source":"2","target":"13","type":"contains"},
-    {"source":"21","target":"11","type":"contains"}
+    { "source": "1", "target": "2", "type": "contains" },
+    { "source": "1", "target": "3", "type": "contains" },
+    { "source": "1", "target": "4", "type": "contains" },
+    { "source": "1", "target": "5", "type": "contains" },
+    { "source": "1", "target": "6", "type": "contains" },
+    { "source": "1", "target": "7", "type": "contains" },
+    { "source": "7", "target": "8", "type": "contains" },
+    { "source": "7", "target": "9", "type": "contains" },
+    { "source": "1", "target": "10", "type": "contains" },
+    { "source": "1", "target": "11", "type": "contains" },
+    { "source": "1", "target": "12", "type": "contains" }
   ]
 }

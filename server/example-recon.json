@@ -1,13 +1,27 @@
 {
-  "website": {
-    "url": "omnixplatform.com",
-    "name": "Omnix Platform"
-  },
+  "domain": "fintekpay.com",
   "nodes": [
     {
-      "value": "omnixplatform.com",
+      "id": "1",
       "type": "domain",
+      "label": "fintekpay.com",
       "status": 200,
+      "size": 24816,
+      "headers": [
+        { "name": "Server", "value": "nginx/1.20.1" },
+        { "name": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "name": "Content-Security-Policy", "value": "default-src 'self'" }
+      ],
+      "technologies": ["Nginx", "React", "Node.js"],
+      "vulnerabilities": [],
+      "details": {
+        "ip": "203.0.113.42",
+        "lastScan": "2025-09-02",
+        "ssl": {
+          "issuer": "Let's Encrypt",
+          "validUntil": "2025-12-02"
+        }
+      },
       "size": 4096,
       "headers": [
         { "key": "Server", "value": "nginx/1.18.0" },
@@ -40,26 +54,15 @@
       "vulnerabilities": []
     },
     {
-      "value": "shop.omnixplatform.com",
+      "value": "api.omnixplatform.com",
       "type": "subdomain",
       "status": 200,
-      "size": 2500,
+      "size": 2048,
       "headers": [
         { "key": "Server", "value": "nginx/1.18.0" }
       ],
-      "technologies": ["Magento", "PHP"],
-      "vulnerabilities": ["Magento outdated version"]
-    },
-    {
-      "value": "bank.omnixplatform.com",
-      "type": "subdomain",
-      "status": 200,
-      "size": 3000,
-      "headers": [
-        { "key": "Server", "value": "nginx/1.18.0" }
-      ],
-      "technologies": ["Java", "Spring Boot"],
-      "vulnerabilities": []
+      "technologies": ["Node.js", "Express"],
+      "vulnerabilities": ["API documentation exposed"]
     },
     {
       "value": "admin.omnixplatform.com",
@@ -111,7 +114,7 @@
       "vulnerabilities": []
     },
     {
-      "value": "omnixplatform.com/admin",
+      "value": "/admin",
       "type": "directory",
       "status": 403,
       "size": 0,
@@ -120,7 +123,7 @@
       "vulnerabilities": ["Admin directory accessible"]
     },
     {
-      "value": "omnixplatform.com/products",
+      "value": "/products",
       "type": "directory",
       "status": 200,
       "size": 4096,
@@ -129,7 +132,7 @@
       "vulnerabilities": []
     },
     {
-      "value": "omnixplatform.com/cart",
+      "value": "/cart",
       "type": "directory",
       "status": 200,
       "size": 1024,
@@ -138,7 +141,7 @@
       "vulnerabilities": []
     },
     {
-      "value": "omnixplatform.com/checkout",
+      "value": "/checkout",
       "type": "directory",
       "status": 200,
       "size": 2048,
@@ -147,7 +150,7 @@
       "vulnerabilities": ["Payment flow exposure"]
     },
     {
-      "value": "omnixplatform.com/uploads",
+      "value": "/uploads",
       "type": "directory",
       "status": 200,
       "size": 1024,
@@ -156,7 +159,7 @@
       "vulnerabilities": ["Unrestricted file upload"]
     },
     {
-      "value": "omnixplatform.com/api/v1/users",
+      "value": "/api/v1/users",
       "type": "endpoint",
       "status": 200,
       "size": 1024,
@@ -167,7 +170,7 @@
       "vulnerabilities": ["No authentication required"]
     },
     {
-      "value": "omnixplatform.com/api/v1/orders",
+      "value": "/api/v1/orders",
       "type": "endpoint",
       "status": 200,
       "size": 1500,
@@ -178,7 +181,7 @@
       "vulnerabilities": []
     },
     {
-      "value": "omnixplatform.com/api/v1/account",
+      "value": "/api/v1/account",
       "type": "endpoint",
       "status": 200,
       "size": 1500,
@@ -189,7 +192,7 @@
       "vulnerabilities": []
     },
     {
-      "value": "omnixplatform.com/api/v1/transfer",
+      "value": "/api/v1/transfer",
       "type": "endpoint",
       "status": 200,
       "size": 1200,
@@ -200,7 +203,7 @@
       "vulnerabilities": ["Weak authorization checks"]
     },
     {
-      "value": "omnixplatform.com/config.php.bak",
+      "value": "config.php.bak",
       "type": "file",
       "status": 200,
       "size": 2048,
@@ -211,7 +214,7 @@
       "vulnerabilities": ["Configuration backup exposed"]
     },
     {
-      "value": "omnixplatform.com/.env",
+      "value": ".env",
       "type": "file",
       "status": 200,
       "size": 512,
@@ -222,7 +225,7 @@
       "vulnerabilities": ["Database credentials disclosure"]
     },
     {
-      "value": "omnixplatform.com/backup.sql",
+      "value": "backup.sql",
       "type": "file",
       "status": 200,
       "size": 8192,
@@ -233,7 +236,7 @@
       "vulnerabilities": ["Database dump exposed"]
     },
     {
-      "value": "omnixplatform.com/private.key",
+      "value": "private.key",
       "type": "file",
       "status": 200,
       "size": 2048,
@@ -245,28 +248,29 @@
     }
   ],
   "relationships": [
-    { "source": "omnixplatform.com", "target": "www.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "app.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "shop.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "bank.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "admin.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "cdn.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "dev.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "status.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "support.omnixplatform.com", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/admin", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/products", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/cart", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/checkout", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/uploads", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/api/v1/users", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/api/v1/orders", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/api/v1/account", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/api/v1/transfer", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/config.php.bak", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/.env", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/backup.sql", "type": "contains" },
-    { "source": "omnixplatform.com", "target": "omnixplatform.com/private.key", "type": "contains" }
+    { "source": "1", "target": "www.omnixplatform.com", "type": "contains" },
+    { "source": "1", "target": "app.omnixplatform.com", "type": "contains" },
+    { "source": "1", "target": "admin.omnixplatform.com", "type": "contains" },
+    { "source": "1", "target": "api.omnixplatform.com", "type": "contains" },
+    
+    { "source": "www.omnixplatform.com", "target": "/products", "type": "contains" },
+    { "source": "www.omnixplatform.com", "target": "/cart", "type": "contains" },
+    { "source": "www.omnixplatform.com", "target": "/checkout", "type": "contains" },
+    
+    { "source": "app.omnixplatform.com", "target": "/dashboard", "type": "contains" },
+    { "source": "app.omnixplatform.com", "target": "/profile", "type": "contains" },
+    { "source": "/dashboard", "target": "/api/v1/account", "type": "contains" },
+    { "source": "/dashboard", "target": "/api/v1/transfer", "type": "contains" },
+    
+    { "source": "admin.omnixplatform.com", "target": "/admin", "type": "contains" },
+    { "source": "admin.omnixplatform.com", "target": "/uploads", "type": "contains" },
+    { "source": "/admin", "target": "/api/v1/users", "type": "contains" },
+    { "source": "/admin", "target": "/api/v1/orders", "type": "contains" },
+    
+    { "source": "api.omnixplatform.com", "target": ".env", "type": "contains" },
+    { "source": "api.omnixplatform.com", "target": "config.php.bak", "type": "contains" },
+    { "source": "api.omnixplatform.com", "target": "backup.sql", "type": "contains" },
+    { "source": "api.omnixplatform.com", "target": "private.key", "type": "contains" }
   ]
 }
 

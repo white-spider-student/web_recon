@@ -1,37 +1,95 @@
-.graph-controls button {
-  width: 36px;
-  height: 36px;
-  background: rgba(20, 20, 20, 0.8);
-  border: 1px solid #2de2e6;
-  color: #2de2e6;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.graph-controls button:hover {
-  background: rgba(45, 226, 230, 0.2);
-  transform: scale(1.05);
-}
-
-.graph-controls button:active {
-  transform: scale(0.95);
-}
-
 .graph-controls {
   position: absolute;
   top: 20px;
   right: 20px;
-  z-index: 100;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  z-index: 1000;
+}
+
+.zoom-controls,
+.level-controls {
+  display: flex;
+  gap: 6px;
+  background: rgba(20, 20, 20, 0.8);
+  padding: 6px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.graph-controls button {
+  background: rgba(45, 226, 230, 0.1);
+  border: 1px solid #2de2e6;
+  color: #2de2e6;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  min-width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.graph-controls button:hover {
+  background: rgba(45, 226, 230, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(45, 226, 230, 0.2);
+}
+
+.graph-controls button:active {
+  transform: translateY(1px);
+}
+
+.graph-controls button.active {
+  background: rgba(45, 226, 230, 0.3);
+  border-color: #2de2e6;
+  box-shadow: 0 0 12px rgba(45, 226, 230, 0.3);
 }
 
 .home-button {
-  font-size: 16px !important;
+  font-size: 16px;
+}
+
+/* Level indicator tooltip */
+.level-controls button::after {
+  content: attr(title);
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 20, 0.9);
+  color: #2de2e6;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  border: 1px solid rgba(45, 226, 230, 0.3);
+}
+
+.level-controls button:hover::after {
+  opacity: 1;
+}
+
+/* Animation for node appearance */
+@keyframes nodeAppear {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.node-enter {
+  animation: nodeAppear 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
