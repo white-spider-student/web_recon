@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+import subprocess
+import os
+import signal
+import time
+import json
+import argparse
+from typing import Dict, List, Optional, Union
+
+class FFUFScanner:
+    def __init__(self, target_url: str, wordlist: Optional[str] = None, extensions: Optional[List[str]] = None, 
+                 threads: int = 40, timeout: int = 10, follow_redirects: bool = False, max_time: int = 30):
+        self.target_url = target_url
+        self.base_dir = os.path.dirname(os.path.dirname(__file__))
+        self.wordlist = wordlist or os.path.join(self.base_dir, "wordlists", "raft-medium-words.txt")
+        self.extensions = extensions or []
+        self.threads = threads
+        self.timeout = timeout
+        self.follow_redirects = follow_redirects
+        self.max_time = max_time  # Maximum run time in seconds
+        self.outfile = os.path.join("/tmp", f"ffuf_dirs_{int(time.time())}.json")
+
+    def prepare_url(self) -> str:
+        """Prepare the URL for scanning."""
+        if not self.target_url.endswith('/'):
+            self.target_url += '/'
+        return self.target_url + "FUZZ"
+
+    def build_command(self) -> List[str]:
+        """Build the ffuf command with all options."""
+        cmd = [
+            "ffuf",
+            "-u", self.prepare_url(),
+            "-w", self.wordlist,
+            "-o", self.outfile,
+            "-of", "json",
+            "-t", str(self.threads),
+            "-timeout", str(self.timeout),
+            "-maxtime", str(self.max_time),  # Add maximum runtime
+            "-mc", "200,204,301,302,307,401,403,405,500",
+            "-p", "0.1"
+        ]
+
+        # Add extensions if specified
+        if self.extensions:
+            cmd.extend(["-e", ",".join(self.extensions)])
+
+        # Add follow redirects if enabled
+        if self.follow_redirects:
+            cmd.append("-r")
+
+        return cmd
+
+    def run(self) -> Dict:
+        """Run the ffuf scan and return results."""
+        print(f"[ffuf] Directory fuzzing on: {self.prepare_url()}")
+        print(f"[ffuf] Using wordlist: {self.wordlist}")
+        print(f"[ffuf] Maximum runtime: {self.max_time} seconds")
+        
+        # Backup existing output file
+        if os.path.exists(self.outfile):
+            backup = self.outfile + ".bak"
+            print(f"[ffuf] Existing output found. Backing up to: {backup}")
+            os.rename(self.outfile, backup)
+
+        cmd = self.build_command()
+        process = subprocess.Popen(cmd)
+        start_time = time.time()
+
+        try:
+            while True:
+                retcode = process.poll()
+                if retcode is not None:
+                    break
+                
+                # Check if we've exceeded max_time
+                if time.time() - start_time > self.max_time:
+                    print(f"\n[ffuf] Maximum time ({self.max_time}s) reached. Stopping scan...")
+                    process.send_signal(signal.SIGINT)
+                    break
+                    
+                time.sleep(0.2)
+                
+        except KeyboardInterrupt:
+            print("\n[ffuf] Ctrl+C detected! Sending SIGINT to ffuf...")
+            try:
+                process.send_signal(signal.SIGINT)
+                for _ in range(25):  # Wait up to 5 seconds
+                    if process.poll() is not None:
+                        break
+                    time.sleep(0.2)
+                else:
+                    print("\n[ffuf] ffuf didn't exit after 5s, sending SIGKILL...")
+                    process.kill()
+            except Exception as e:
+                print(f"[ffuf] Error during termination: {e}")
+                process.kill()
+            finally:
+                process.wait()
+
+        if os.path.exists(self.outfile):
+            with open(self.outfile, 'r') as f:
+                data = f.read()
+                try:
+                    return json.loads(data)
+                except json.JSONDecodeError:
+                    print("[ffuf] Warning: Output is not valid JSON")
+                    return {}
+        return {}
+
+def run(target_url: str, **kwargs) -> Dict:
+    """Main function to run the scanner with the given parameters."""
+    scanner = FFUFScanner(target_url, **kwargs)
+    return scanner.run()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Directory fuzzing tool using ffuf')
+    parser.add_argument('url', help='Target URL to scan')
+    parser.add_argument('-w', '--wordlist', help='Path to wordlist file')
+    parser.add_argument('-e', '--extensions', help='File extensions to check (comma-separated)')
+    parser.add_argument('-t', '--threads', type=int, default=40, help='Number of threads (default: 40)')
+    parser.add_argument('--timeout', type=int, default=10, help='Request timeout (default: 10)')
+    parser.add_argument('--max-time', type=int, default=30, help='Maximum runtime in seconds (default: 30)')
+    parser.add_argument('-r', '--follow-redirects', action='store_true', help='Follow redirects')
+    
+    args = parser.parse_args()
+    
+    # Convert extensions string to list if provided
+    extensions = args.extensions.split(',') if args.extensions else None
+    
+    # Run the scan with provided arguments
+    result = run(
+        args.url,
+        wordlist=args.wordlist,
+        extensions=extensions,
+        threads=args.threads,
+        timeout=args.timeout,
+        max_time=args.max_time,
+        follow_redirects=args.follow_redirects
+    )
+    
+    # Pretty print the results
+    print(json.dumps(result, indent=2))

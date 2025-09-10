@@ -1,118 +1,154 @@
-# Web Recon Map
+# Web Reconnaissance Tool
 
-Web Recon Map is a full-stack web application for visualizing the structure and relationships of nodes (such as subdomains, directories, endpoints, technologies, and vulnerabilities) discovered during web reconnaissance. It features a React-based interactive graph UI and a Node.js/Express backend with a normalized SQLite database schema.
+A comprehensive web reconnaissance tool for discovering and visualizing domain information, subdomains, directories, and potential vulnerabilities.
 
-## Features
+## Project Overview
 
-- **Interactive Graph Visualization:** Explore discovered nodes and their relationships using a force-directed graph.
-- **Multi-Website Support:** Manage and visualize data for multiple target websites.
-- **Node Details Panel:** View HTTP status, headers, technologies, and vulnerability hints for each node.
-- **Filtering & Search:** Filter nodes by status, technology, type, method, and file type. Search nodes and highlight paths.
-- **API Server:** RESTful API for managing websites, nodes, and relationships.
-- **Database Schema:** Normalized SQLite schema with tables for websites, nodes, headers, technologies, vulnerabilities, and relationships.
+This project provides a set of tools for conducting web reconnaissance on target domains:
+
+1. **Subdomain Discovery**: Find subdomains of target websites
+2. **Directory Scanning**: Discover directories and files on websites
+3. **Technology Detection**: Identify technologies used by websites
+4. **Visualization**: Display reconnaissance data in an interactive graph
+5. **Data Storage**: Store and query reconnaissance results in a SQLite database
 
 ## Project Structure
 
 ```
 .
-├── public/                # Static assets and HTML template
-├── src/                   # React frontend source code
-│   ├── components/        # React components (Graph, DetailsPanel)
-│   └── App.js             # Main application
-├── server/                # Node.js/Express backend and database scripts
-│   ├── index.js           # API server
-│   ├── migrate.js         # Database migration script
-│   ├── seed-data.js       # Sample data seeding script
-│   ├── test-schema.js     # Schema validation script
-│   └── view-data.js       # Data viewing utility
-├── package.json           # Frontend dependencies and scripts
-└── README.md             # Project documentation
+├── build/                  # React application build for the visualization interface
+├── public/                 # Static assets for the React application
+├── recon/                  # Python reconnaissance modules
+│   ├── ffuf_subs.py        # Subdomain discovery using ffuf
+│   ├── ffuf.py             # Directory scanning using ffuf
+│   ├── nmap_http.py        # HTTP service detection using nmap
+│   ├── webanalyze.py       # Technology detection using webanalyze
+│   └── whatweb.py          # Technology detection using whatweb
+├── server/                 # Node.js server for the visualization interface
+│   ├── data.db             # SQLite database for storing reconnaissance data
+│   ├── import-visualized-data.js   # Script to import visualization data
+│   ├── index.js            # Main server file
+│   ├── init-db.js          # Database initialization script
+│   └── schema.sql          # Database schema
+├── src/                    # React application source code
+│   ├── components/         # React components
+│   │   ├── DetailsPanel.jsx # Panel for displaying details about selected nodes
+│   │   ├── Graph.jsx       # Graph visualization component
+│   │   └── HierarchicalGraph.jsx # Hierarchical graph visualization
+│   └── types/              # TypeScript type definitions
+│       └── NodeTypes.js    # Node type definitions for the graph
+└── results/                # Directory for storing scan results
 ```
+
+## Features
+
+- **Subdomain Discovery**: Identify subdomains using various techniques
+- **Directory Scanning**: Find directories, files, and endpoints
+- **Technology Detection**: Identify web technologies, frameworks, and servers
+- **Vulnerability Identification**: Flag potential security issues
+- **Relationship Mapping**: Visualize relationships between domains, subdomains, directories
+- **Interactive Visualization**: Explore reconnaissance data using an interactive graph
+- **Data Export/Import**: Save and load reconnaissance data
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v16+ recommended)
-- npm
+- Node.js and npm
+- Python 3.x
+- SQLite3
+- Various reconnaissance tools (ffuf, nmap, etc.)
 
-### Setup
+### Installation
 
-#### 1. Install Frontend Dependencies
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/white-spider-student/web_recon.git
+   cd web_recon
+   ```
 
-```sh
-npm install
-```
+2. Install server dependencies:
+   ```bash
+   cd server
+   npm install
+   ```
 
-#### 2. Install Backend Dependencies
+3. Install frontend dependencies:
+   ```bash
+   cd ..
+   npm install
+   ```
 
-```sh
-cd server
-npm install
-```
+4. Install Python dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-#### 3. Initialize the Database
+### Usage
 
-You can seed the database with sample data:
+#### Running a Scan
 
-```sh
-node seed-data.js
-```
+1. Start a scan with the web scanner tool:
+   ```bash
+   python web_scanner.py -d example.com
+   ```
+   
+2. Extract and format the results:
+   ```bash
+   python dir_extract.py
+   ```
+   
+3. Import data into the database:
+   ```bash
+   cd server
+   node import-visualized-data.js ../results/recon_sql_*.json
+   ```
 
-Or migrate an existing database to the new schema:
+#### Starting the Visualization Server
 
-```sh
-node migrate.js
-```
+1. Start the Node.js server:
+   ```bash
+   cd server
+   npm start
+   ```
+   
+2. Start the React development server:
+   ```bash
+   npm start
+   ```
+   
+3. Open your browser and navigate to `http://localhost:3000`
 
-#### 4. Start the Backend Server
+## Visualization
 
-```sh
-node index.js
-```
+The visualization interface displays:
 
-The API server will run at [http://localhost:3001](http://localhost:3001).
+- **Domains**: Main target domains
+- **Subdomains**: Discovered subdomains
+- **Directories**: Discovered directories and files
+- **Relationships**: Connections between different entities
+- **Details**: Information about selected nodes including status codes, content types, etc.
 
-#### 5. Start the Frontend
+## Database Schema
 
-In the project root:
+The application uses a SQLite database with the following main tables:
 
-```sh
-npm start
-```
+- **websites**: Information about target websites
+- **nodes**: Discovered entities (domains, subdomains, directories, etc.)
+- **node_relationships**: Connections between nodes
+- **node_vulnerabilities**: Detected vulnerabilities
+- **node_technologies**: Detected technologies
+- **node_headers**: HTTP headers
 
-The React app will run at [http://localhost:3000](http://localhost:3000).
+## Contributing
 
-## API Endpoints
-
-- `GET /websites` — List all websites
-- `POST /websites` — Create a new website
-- `GET /websites/:websiteId/nodes` — Get nodes and relationships for a website
-- `POST /websites/:websiteId/nodes` — Add a node to a website
-- `POST /nodes/:sourceNodeId/relationships/:targetNodeId` — Create a relationship
-- `GET /nodes/:nodeId/relationships` — Get relationships for a node
-
-See `server/schema-documentation.md` for full schema details.
-
-## Available Scripts
-
-### `npm start`
-
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
-
-### `npm test`
-
-Launches the test runner in the interactive watch mode.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.
 
----
+## Acknowledgments
 
-*Made with React, D3, and Express. For educational and research purposes.*
+- This tool uses various open-source reconnaissance tools
+- Visualization is built using React and D3.js

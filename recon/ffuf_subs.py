@@ -2,17 +2,73 @@ import os
 import subprocess
 import signal
 import time
+import requests
 
-def run(domain):
-    outdir = os.path.join("projects", domain)
-    os.makedirs(outdir, exist_ok=True)
+def clean_old_results(domain, results_dir):
+    """Remove old results for the given domain"""
+    old_file = os.path.join(results_dir, f"ffuf_subs_{domain.replace('.', '_')}.json")
+    if os.path.exists(old_file):
+        os.remove(old_file)
+        print(f"[ffuf] Removed old result file: {old_file}")
 
-    wordlist = "/home/mohammed/tools/SecLists/Discovery/DNS/subdomains-top1million-5000.txt"
+def run(domain, max_time=30):
+    # Remove any trailing slashes from domain
+    domain = domain.rstrip('/')
+    
+    # Use wordlist from local wordlists directory
+    default_wordlist = os.path.join(os.path.dirname(os.path.dirname(__file__)), "wordlists", "bitquark-subdomains-top100000.txt")
+    wordlist = os.getenv('SUBDOMAIN_WORDLIST', default_wordlist)
     url = f"http://FUZZ.{domain}"
-    outfile = os.path.join(outdir, "ffuf_subs.json")
+    
+        # Create results directory if it doesn't exist
+    results_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "results")
+    os.makedirs(results_dir, exist_ok=True)
+    
+    # Clean up old results
+    clean_old_results(domain, results_dir)
+    
+    # Set output file without timestamp
+    outfile = os.path.join(results_dir, f"ffuf_subs_{domain.replace('.', '_')}.json")
 
+    # Calibrate the response size for non-existent subdomains
+    print("[ffuf] Calibrating response size for non-existent subdomains...")
+    import random
+    import string
+    import subprocess
+    import requests
+
+    # Generate 3 random subdomains to test
+    sizes = []
+    for _ in range(3):
+        random_sub = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+        test_url = f"http://{random_sub}.{domain}"
+        try:
+            response = requests.get(test_url, timeout=5)
+            sizes.append(response.headers.get('content-length', '0'))
+        except requests.RequestException:
+            # If request fails, try to get response size using curl
+            curl_cmd = ["curl", "-s", "-o", "/dev/null", "-w", "%{size_download}", test_url]
+            try:
+                size = subprocess.check_output(curl_cmd, timeout=5).decode().strip()
+                sizes.append(size)
+            except subprocess.SubprocessError:
+                continue
+
+    # Calculate the most common response size
+    if sizes:
+        from collections import Counter
+        calibrated_size = Counter(sizes).most_common(1)[0][0]
+        print(f"[ffuf] Calibrated size filter: {calibrated_size}")
+    else:
+        calibrated_size = None
+        print("[ffuf] Calibration failed, continuing without size filter")
+
+    print(f"[ffuf] Using wordlist: {wordlist}")
     print(f"[ffuf] Subdomain fuzzing on: {url}")
+    print(f"[ffuf] Maximum runtime: {max_time} seconds")
+    print(f"[ffuf] Output will be saved to: {outfile}")
 
+    # Build the ffuf command with calibrated size filter
     cmd = [
         "ffuf",
         "-w", wordlist,
@@ -21,8 +77,14 @@ def run(domain):
         "-o", outfile,
         "-of", "json",
         "-t", "40",
-        "-p", "0.1"
+        "-p", "0.1",
+        "-timeout", "10",
+        "-maxtime", str(max_time)
     ]
+    
+    # Add size filter if calibration was successful
+    if calibrated_size:
+        cmd.extend(["-fs", str(calibrated_size)])
 
     process = subprocess.Popen(cmd)
 
@@ -45,10 +107,16 @@ def run(domain):
         finally:
             process.wait()
 
-    if os.path.exists(outfile) and os.path.getsize(outfile) > 0:
-        print(f"[ffuf] Output saved: {outfile}")
-    else:
-        print("[ffuf] No output file was created or it's empty.")
+    if os.path.exists(outfile):
+        with open(outfile, 'r') as f:
+            return f.read()
+    return "{}"
 
-    return  # Back to shell
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) != 2:
+        print("Usage: python3 ffuf_subs.py <domain>")
+        sys.exit(1)
+    result = run(sys.argv[1])
+    print(result)
 

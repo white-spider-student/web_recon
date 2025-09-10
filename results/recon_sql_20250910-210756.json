@@ -1,0 +1,1228 @@
+{
+  "scan": {
+    "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+    "target": "outbound.htb",
+    "timestamp_start": "2025-09-10T21:07:56.770841",
+    "timestamp_end": "2025-09-10T21:07:56.824674",
+    "duration": 0.053833,
+    "status": "completed",
+    "risk_level": "low"
+  },
+  "subdomains": [
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "subdomain": "mail.outbound.htb",
+      "status_code": 200,
+      "ip_address": null,
+      "is_active": true,
+      "discovered_at": "2025-09-10T20:07:48.117846"
+    }
+  ],
+  "directories": [
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.jsp",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.aspx",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.asp",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.html",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.json",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.htm",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.txt",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.md",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.xml",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.yaml",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.cfg",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.env",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.yml",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.conf",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.bak",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.backup",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.swp",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.config",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.old",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.db",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.api",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.sql",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.git",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.svn",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.htpasswd",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.htaccess",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.ini",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.log",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.tar.gz",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.zip",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/plugins",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.asp",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.aspx",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.jsp",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.html",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.json",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.xml",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.htm",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.md",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.cfg",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.txt",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.config",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.conf",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.yml",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.env",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.swp",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.yaml",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.backup",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.db",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.bak",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.api",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.sql",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.old",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.git",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.svn",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.htpasswd",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.htaccess",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.tar.gz",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.zip",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.ini",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.log",
+      "status_code": 403,
+      "content_length": 162,
+      "content_type": null,
+      "discovered_at": "2025-09-10T20:11:21"
+    }
+  ],
+  "vulnerabilities": [],
+  "technologies": [],
+  "http_services": [],
+  "interesting_files": [
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.env",
+      "type": "configuration",
+      "reason": "Environment configuration file with potential secrets",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.conf",
+      "type": "configuration",
+      "reason": "Configuration file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.bak",
+      "type": "backup",
+      "reason": "Backup file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.backup",
+      "type": "backup",
+      "reason": "Backup file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.swp",
+      "type": "unknown",
+      "reason": "Backup file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.config",
+      "type": "configuration",
+      "reason": "Configuration file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.old",
+      "type": "backup",
+      "reason": "Backup file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.db",
+      "type": "database",
+      "reason": "Database file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.api",
+      "type": "unknown",
+      "reason": "API endpoint",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.sql",
+      "type": "database",
+      "reason": "Database file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.git",
+      "type": "unknown",
+      "reason": "Source code repository",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.htpasswd",
+      "type": "access-control",
+      "reason": "Web server access control file",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.html.htaccess",
+      "type": "access-control",
+      "reason": "Web server access control file",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.config",
+      "type": "configuration",
+      "reason": "Configuration file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.conf",
+      "type": "configuration",
+      "reason": "Configuration file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.env",
+      "type": "configuration",
+      "reason": "Environment configuration file with potential secrets",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.swp",
+      "type": "unknown",
+      "reason": "Backup file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.backup",
+      "type": "backup",
+      "reason": "Backup file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.db",
+      "type": "database",
+      "reason": "Database file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.bak",
+      "type": "backup",
+      "reason": "Backup file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.api",
+      "type": "unknown",
+      "reason": "API endpoint",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.sql",
+      "type": "database",
+      "reason": "Database file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.old",
+      "type": "backup",
+      "reason": "Backup file may contain sensitive information",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.git",
+      "type": "unknown",
+      "reason": "Source code repository",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.htpasswd",
+      "type": "access-control",
+      "reason": "Web server access control file",
+      "discovered_at": "2025-09-10T20:11:21"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "path": "/.htm.htaccess",
+      "type": "access-control",
+      "reason": "Web server access control file",
+      "discovered_at": "2025-09-10T20:11:21"
+    }
+  ],
+  "relationships": [
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "subdomain",
+      "target_value": "mail.outbound.htb",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.jsp",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.aspx",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.asp",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.html",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.json",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.htm",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.txt",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.md",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.xml",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.yaml",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.cfg",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.env",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.yml",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.conf",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.bak",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.backup",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.swp",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.config",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.old",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.db",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.api",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.sql",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.git",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.svn",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.htpasswd",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.htaccess",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.ini",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.log",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.tar.gz",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.html.zip",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "directory",
+      "target_value": "/plugins",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.asp",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.aspx",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.jsp",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.html",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.json",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.xml",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.htm",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.md",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.cfg",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.txt",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.config",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.conf",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.yml",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.env",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.swp",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.yaml",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.backup",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.db",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.bak",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.api",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.sql",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.old",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.git",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.svn",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.htpasswd",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.htaccess",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.tar.gz",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.zip",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.ini",
+      "relationship_type": "contains"
+    },
+    {
+      "scan_id": "63ebbe58-6061-4e5f-ba81-832de11432c2",
+      "source_type": "domain",
+      "source_value": "outbound.htb",
+      "target_type": "file",
+      "target_value": "/.htm.log",
+      "relationship_type": "contains"
+    }
+  ]
+}

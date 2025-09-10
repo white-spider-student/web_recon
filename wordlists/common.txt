@@ -1,0 +1,10 @@
+admin
+api
+login
+wp-admin
+dashboard
+images
+css
+js
+assets
+blog
