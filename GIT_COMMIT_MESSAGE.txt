@@ -1,0 +1,8 @@
+Add README.md: project overview, setup, importer, server endpoints, and usage
+
+This commit adds a project README describing the repository layout, quick start
+instructions for running the server and frontend, how to import visualization JSON
+files into the database, and troubleshooting tips. Also documents the `/websites/:id/viz`
+endpoint which serves the raw viz JSON file produced by the cleaning pipeline.
+
+Signed-off-by: web-recon-automation

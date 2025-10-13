@@ -1,0 +1,11 @@
+{
+  "summary_count": 0,
+  "findings": [],
+  "raw": {
+    "info": {
+      "args": "/home/mohammed/Desktop/web_recon/recon/dirsearch/dirsearch.py -u http://www.example.com -o /home/mohammed/Desktop/web_recon/results/dirsearch_www.example.com.json -O json -t 50",
+      "time": "2025-09-19 18:54:26"
+    },
+    "results": []
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "target": "example.com",
+  "status": 200,
+  "content_length": 648,
+  "ip": "23.192.228.84",
+  "response_time_ms": 972,
+  "title": "Example Domain",
+  "headers": {
+    "Accept-Ranges": "bytes",
+    "Content-Type": "text/html",
+    "ETag": "\"84238dfc8092e5d9c0dac8ef93371a07:1736799080.121134\"",
+    "Last-Modified": "Mon, 13 Jan 2025 20:11:20 GMT",
+    "Vary": "Accept-Encoding",
+    "Content-Encoding": "gzip",
+    "Content-Length": "648",
+    "Cache-Control": "max-age=86000",
+    "Date": "Fri, 19 Sep 2025 16:02:52 GMT",
+    "Connection": "keep-alive",
+    "Alt-Svc": "h3=\":443\"; ma=93600"
+  },
+  "technologies": [],
+  "wappalyzer": {
+    "error": "wappalyzer not installed"
+  },
+  "tls_cert": {
+    "common_name": null,
+    "valid_from": null,
+    "valid_to": null
+  }
+}

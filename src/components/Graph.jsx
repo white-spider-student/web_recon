@@ -135,6 +135,8 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
       <ForceGraph2D
         ref={fgRef}
         graphData={data}
+        dagMode="radialout"
+        dagLevelDistance={100}
         nodeLabel={node => node.label || node.id}
         nodeRelSize={6}
         linkColor={link => {
@@ -170,6 +172,8 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
           // Draw glow effect for highlighted nodes
           if (isHighlighted) {
             const glowSize = 15;
+            // Skip if node positions are not yet finite
+            if (!isFinite(node.x) || !isFinite(node.y)) return;
             const gradient = ctx.createRadialGradient(
               node.x, node.y, radius,
               node.x, node.y, glowSize

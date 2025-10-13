@@ -1,0 +1,44 @@
+[
+  {
+    "time": 1758297266,
+    "tool": "dirsearch",
+    "target": "example.com",
+    "filename": "dirsearch_example.com.json",
+    "ok": true
+  },
+  {
+    "time": 1758297268,
+    "tool": "dirsearch",
+    "target": "www.example.com",
+    "filename": "dirsearch_www.example.com.json",
+    "ok": true
+  },
+  {
+    "time": 1758297268,
+    "tool": "simple_fingerprint",
+    "target": "www.example.com",
+    "filename": "simple_fingerprint_www.example.com.json",
+    "ok": true
+  },
+  {
+    "time": 1758297740,
+    "tool": "dirsearch",
+    "target": "example.com",
+    "filename": "dirsearch_example.com.json",
+    "ok": true
+  },
+  {
+    "time": 1758297770,
+    "tool": "nmap",
+    "target": "example.com",
+    "filename": "nmap_example.com.json",
+    "ok": true
+  },
+  {
+    "time": 1758297774,
+    "tool": "simple_fingerprint",
+    "target": "example.com",
+    "filename": "simple_fingerprint_example.com.json",
+    "ok": true
+  }
+]

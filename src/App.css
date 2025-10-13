@@ -43,10 +43,24 @@ html,body,#root{
 }
 
 .sidebar{width:300px;padding:28px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column}
-.sidebar h1{color:var(--accent);font-size:28px;margin:0 0 18px 0;letter-spacing:2px}
-.sidebar input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid #182227;background:#0b1113;color:var(--accent);outline:none}
-.sidebar button{width:100%;padding:12px;border-radius:8px;background:var(--accent);color:#041415;border:none;font-weight:700;margin-top:12px;cursor:pointer}
+.ide-header{display:flex;flex-direction:column;gap:10px}
+.sidebar h1{color:var(--accent);font-size:24px;margin:0 0 6px 0;letter-spacing:1px}
+.sidebar input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid #182227;background:#071018;color:var(--accent);outline:none}
+.sidebar button{width:100%;padding:12px;border-radius:8px;background:var(--accent);color:#041415;border:none;font-weight:700;margin-top:6px;cursor:pointer}
 .sidebar button:hover{filter:brightness(.95)}
+
+.sidebar .section-title{margin-top:16px;margin-bottom:8px;color:var(--muted);font-size:13px;font-weight:600}
+.progress-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted)}
+.progress-row .count{color:var(--text);font-weight:700}
+.level-controls{display:flex;gap:8px;align-items:center;margin:12px 0}
+.level-controls button{background:#0b2b34;color:#9ee7ff;border:1px solid #23333a;padding:6px 10px;border-radius:6px;cursor:pointer}
+.level-controls .level-display{min-width:90px;text-align:center;background:#071018;color:#cdeff6;padding:6px 8px;border-radius:6px}
+
+.filters{margin-top:18px;overflow:auto;padding-right:6px}
+.filters label{display:flex;align-items:center;color:var(--muted);margin-bottom:8px}
+.filters input[type=checkbox]{accent-color:var(--accent);margin-right:8px}
+
+.expanded-box{margin-top:10px;background:#071018;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:6px;color:#9ee7ff;font-size:13px}
 
 .progress-bar{height:10px;background:#0b1113;border-radius:8px;overflow:hidden;margin-top:8px}
 .progress-bar-inner{height:10px;border-radius:8px}

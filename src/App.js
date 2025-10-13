@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import { Graph } from './components/Graph';
+import { HierarchicalGraph } from './components/HierarchicalGraph';
 import { DetailsPanel } from './components/DetailsPanel';
 import axios from 'axios';
 
 export default function App() {
-  const [target, setTarget] = useState('target.com');
+  const [target, setTarget] = useState('waitbutwhy.com');
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState(null);
+  const [currentWebsiteId, setCurrentWebsiteId] = useState(null);
   const [spacing, setSpacing] = useState(0.2);
+  const [levelNumber, setLevelNumber] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedNodes, setHighlightedNodes] = useState([]); // array of node ids
   const [highlightPath, setHighlightPath] = useState([]); // array of node ids that form the path
@@ -63,6 +65,50 @@ export default function App() {
     let cur = endId;
     while (cur !== null) { path.push(cur); cur = prev.get(cur); }
     return path.reverse();
+  };
+
+  // Expand graph up to a specific depth level (0 = root only, 1 = root + immediate children, etc.)
+  const expandToLevel = async (level) => {
+    const gi = window.graphInstance;
+    if (!gi) return console.error('graphInstance not available');
+
+    // Prefer the centralized expandToLevel API implemented by the graph component.
+    if (typeof gi.expandToLevel === 'function') {
+      try {
+        gi.expandToLevel(level);
+        return;
+      } catch (e) {
+        console.debug('expandToLevel API failed, falling back to iterative expansion', e);
+      }
+    }
+
+    // Fallback: iterative expansion using expandNode/collapseAll if expandToLevel not available
+    const nodes = graphData.nodes || [];
+    const links = graphData.links || [];
+    const root = nodes.find(n => n.type === 'domain') || nodes[0];
+    if (!root) return console.error('No root node');
+
+    // Collapse all then expand root
+    gi.collapseAll && gi.collapseAll();
+    gi.expandNode && gi.expandNode(root.id);
+    if (level <= 0) return;
+    // Current frontier holds nodes at current depth
+    let frontier = [root.id];
+    for (let depth = 1; depth <= level; depth++) {
+      const next = [];
+      for (const id of frontier) {
+        // find immediate children in the raw graphData (contains links)
+        const kids = links.filter(l => (typeof l.source === 'object' ? l.source.id : l.source) === id && l.type === 'contains').map(l => (typeof l.target === 'object' ? l.target.id : l.target));
+        for (const k of kids) {
+          gi.expandNode && gi.expandNode(k); // make the node visible
+          next.push(k);
+        }
+      }
+      frontier = [...new Set(next)];
+      // small delay to let graph settle and to show progression
+      await new Promise(r => setTimeout(r, 300));
+      if (!frontier.length) break; // nothing more to expand
+    }
   };
 
   const handleSearch = (value) => {
@@ -162,7 +208,9 @@ export default function App() {
       
       // Fetch nodes and relationships for the website
       const response = await axios.get(`http://localhost:3001/websites/${websiteId}/nodes`);
-      const { nodes, relationships } = response.data;
+  const { nodes, relationships } = response.data;
+  // remember current website id so we can lazy-load single node details later
+  setCurrentWebsiteId(websiteId);
       
       console.log('=== DEBUG INFO ===');
       console.log('Website ID:', websiteId);
@@ -171,14 +219,18 @@ export default function App() {
       console.log('Sample relationships:', relationships.slice(0, 3));
       
       // Transform nodes to match the expected format
+      // Preserve the full node object so DetailsPanel can access node.meta, headers, technologies etc.
       const transformedNodes = nodes.map(node => ({
+        // keep id/label/visual fields but also embed full raw node under _raw
         id: node.id,
         group: node.type,
         type: node.type,
         value: node.value,
         status: node.status,
         size: node.size,
-        label: node.value
+        label: node.value,
+        // spread raw node fields to make them available on the node object
+        ...node
       }));
       
       // Transform relationships to match the expected format
@@ -233,18 +285,30 @@ export default function App() {
         )}
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 13, color: '#9aa6b0', marginBottom: 6 }}>Progress</div>
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>0 subdomains</span><span>65%</span></div>
-            <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: '65%', height: 4, background: '#2de2e6', borderRadius: 2 }} /></div>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>10 directories</span><span>33%</span></div>
-            <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: '33%', height: 4, background: '#3b82f6', borderRadius: 2 }} /></div>
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>35 endpoints</span><span>16%</span></div>
-            <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: '16%', height: 4, background: '#fb923c', borderRadius: 2 }} /></div>
-          </div>
+          {(function() {
+            const nodes = graphData.nodes || [];
+            const total = nodes.length || 1;
+            const subdomains = nodes.filter(n => n.type === 'subdomain').length;
+            const directories = nodes.filter(n => n.type === 'directory').length;
+            const endpoints = nodes.filter(n => n.type === 'endpoint' || n.type === 'file').length;
+            const p = (v) => Math.round((v / Math.max(1, total)) * 100);
+            return (
+              <>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{subdomains} subdomains</span><span>{p(subdomains)}%</span></div>
+                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${p(subdomains)}%`, height: 4, background: '#2de2e6', borderRadius: 2 }} /></div>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{directories} directories</span><span>{p(directories)}%</span></div>
+                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${p(directories)}%`, height: 4, background: '#3b82f6', borderRadius: 2 }} /></div>
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{endpoints} endpoints</span><span>{p(endpoints)}%</span></div>
+                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${p(endpoints)}%`, height: 4, background: '#fb923c', borderRadius: 2 }} /></div>
+                </div>
+              </>
+            );
+          })()}
         </div>
         <div style={{ fontSize: 15, color: '#d6e6ea', marginBottom: 8, fontWeight: 600 }}>Filters</div>
         <div style={{ maxHeight: '260px', overflowY: 'auto', marginBottom: 12 }}>
@@ -284,10 +348,10 @@ export default function App() {
         </div>
       </div>
 
-      <div className="main-content">
+  <div className="main-content">
         <div className="graph-area" style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', position: 'relative' }}>
           <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', minHeight: 0 }}>
-            <Graph
+            <HierarchicalGraph
               data={(function() {
                 // Filter nodes based on current filter settings
                 const visibleNodes = graphData.nodes.filter(n => {
@@ -319,8 +383,20 @@ export default function App() {
               spacing={spacing}
               highlightedNodes={highlightedNodes}
               highlightPath={highlightPath}
-              onNodeClick={(node, highlightIds) => {
-                setSelectedNode(node);
+              onNodeClick={async (node, highlightIds) => {
+                try {
+                  if (currentWebsiteId) {
+                    const encodedNodeId = encodeURIComponent(node.id);
+                    const res = await axios.get(`http://localhost:3001/websites/${currentWebsiteId}/nodes/${encodedNodeId}`);
+                    setSelectedNode(res.data.node || node);
+                  } else {
+                    setSelectedNode(node);
+                  }
+                } catch (e) {
+                  console.error('Failed to fetch node details', e);
+                  setSelectedNode(node);
+                }
+
                 setHighlightedNodes(highlightIds || [node.id]);
                 if (window && window.graphInstance && node) {
                   // graphInstance is set in Graph.jsx, see below
@@ -328,19 +404,15 @@ export default function App() {
                 }
               }}
             />
-            {/* right-hand details panel overlays graph area */}
-            <div className={selectedNode ? 'details-panel' : 'details-panel hidden'}>
-              {selectedNode && <DetailsPanel node={selectedNode} onClose={() => setSelectedNode(null)} />}
-            </div>
-          </div>
-          {/* Color example legend overlays at bottom of graph area */}
-          <div className="legend">
-            <div><span className="root" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#ffffff', border: '1px solid #ccc', marginRight: 8 }} /> Root Domain</div>
-            <div><span className="subdomains" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#2de2e6', marginRight: 8 }} /> Subdomains</div>
-            <div><span className="directories" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#3b82f6', marginRight: 8 }} /> Directories</div>
-            <div><span className="endpoints" style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#fb923c', marginRight: 8 }} /> Endpoints</div>
           </div>
         </div>
+        {/* Details panel rendered alongside graph */}
+        {selectedNode && (
+          <DetailsPanel
+            node={selectedNode}
+            onClose={() => setSelectedNode(null)}
+          />
+        )}
       </div>
     </div>
   );

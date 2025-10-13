@@ -1,0 +1,17 @@
+import requests
+import subprocess
+
+# List of required packages
+requirements = [
+    "requests",
+    "subprocess32",  # For subprocess management (if needed)
+    "ffuf",          # Assuming ffuf is installed as a Python package
+    "nmap",          # For nmap interactions
+    "beautifulsoup4", # For parsing HTML in webanalyze.py
+    "lxml",          # For parsing HTML in webanalyze.py
+]
+
+# Write the requirements to the requirements.txt file
+with open('/web_recon/web_recon/requirements.txt', 'w') as f:
+    for package in requirements:
+        f.write(f"{package}\n")

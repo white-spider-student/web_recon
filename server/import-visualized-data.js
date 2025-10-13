@@ -1,217 +1,181 @@
 #!/usr/bin/env node
-/**
- * Import Recon Visualization Data into SQLite Database
- * 
- * This script imports the visualization-formatted JSON data into the SQLite database
- * for use with the web interface.
- */
-
 const fs = require('fs');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const sqlite3 = require('sqlite3');
 
-// Get command line arguments
-const args = process.argv.slice(2);
-const defaultDataFile = path.join(__dirname, '..', 'results', 'recon_sql_20250910-211053_viz.json');
-const dataFile = args[0] || defaultDataFile;
+if (process.argv.length < 2) {
+  console.error('Usage: node import-visualized-data.js <viz.json>');
+  process.exit(2);
+}
 
-// Database connection
+const vizPath = path.resolve(process.argv[2] || process.argv[1]);
+if (!fs.existsSync(vizPath)) {
+  console.error('File not found:', vizPath);
+  process.exit(2);
+}
+
 const db = new sqlite3.Database(path.join(__dirname, 'data.db'));
 
-// Enable foreign keys
-db.run('PRAGMA foreign_keys = ON');
+const runAsync = (sql, params=[]) => new Promise((resolve, reject) => db.run(sql, params, function(err){ if(err) reject(err); else resolve(this); }));
+const allAsync = (sql, params=[]) => new Promise((resolve, reject) => db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows)));
+const getAsync = (sql, params=[]) => new Promise((resolve, reject) => db.get(sql, params, (err, row) => err ? reject(err) : resolve(row)));
 
-// Clear existing data
-function clearTables() {
-    const tables = [
-        'node_relationships',
-        'node_headers',
-        'node_technologies',
-        'node_vulnerabilities',
-        'nodes',
-        'websites'
-    ];
-    
-    db.serialize(() => {
-        // Disable foreign keys temporarily for faster deletion
-        db.run('PRAGMA foreign_keys = OFF');
-        
-        tables.forEach(table => {
-            db.run(`DELETE FROM ${table}`);
-            console.log(`Cleared table: ${table}`);
-        });
-        
-        // Re-enable foreign keys
-        db.run('PRAGMA foreign_keys = ON');
-    });
+async function getTableColumns(tableName){
+  try{
+    const rows = await allAsync(`PRAGMA table_info(${tableName})`);
+    return Array.isArray(rows) ? rows.map(r => r.name) : [];
+  }catch(e){
+    return [];
+  }
 }
 
-// Insert a website and get its ID
-function insertWebsite(url, name) {
-    return new Promise((resolve, reject) => {
-        const stmt = db.prepare('INSERT INTO websites (url, name, created_at) VALUES (?, ?, datetime("now"))');
-        stmt.run(url, name || url, function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                console.log(`Inserted website: ${url} with ID ${this.lastID}`);
-                resolve(this.lastID);
-            }
-        });
-        stmt.finalize();
-    });
+function safeStringify(x){
+  if (x === undefined || x === null) return null;
+  if (typeof x === 'string') return x;
+  try { return JSON.stringify(x); } catch(e){ return String(x); }
 }
 
-// Insert a node and get its ID
-function insertNode(websiteId, nodeData) {
-    return new Promise((resolve, reject) => {
-        const stmt = db.prepare(
-            'INSERT INTO nodes (website_id, value, type, status, size) VALUES (?, ?, ?, ?, ?)'
-        );
-        stmt.run(
-            websiteId,
-            nodeData.value,
-            nodeData.type,
-            nodeData.status || 0,
-            nodeData.size || 0,
-            function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    const nodeId = this.lastID;
-                    console.log(`Inserted node: ${nodeData.value} (${nodeData.type}) with ID ${nodeId}`);
-                    
-                    // Insert headers, technologies and vulnerabilities
-                    if (nodeData.headers && nodeData.headers.length > 0) {
-                        insertHeaders(nodeId, nodeData.headers);
-                    }
-                    
-                    if (nodeData.technologies && nodeData.technologies.length > 0) {
-                        insertTechnologies(nodeId, nodeData.technologies);
-                    }
-                    
-                    if (nodeData.vulnerabilities && nodeData.vulnerabilities.length > 0) {
-                        insertVulnerabilities(nodeId, nodeData.vulnerabilities);
-                    }
-                    
-                    resolve(nodeId);
-                }
-            }
-        );
-        stmt.finalize();
-    });
-}
+async function importViz(filePath){
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const viz = JSON.parse(raw);
+  if (!viz.nodes || !Array.isArray(viz.nodes)) throw new Error('viz JSON missing nodes array');
 
-// Insert headers for a node
-function insertHeaders(nodeId, headers) {
-    const stmt = db.prepare('INSERT INTO node_headers (node_id, name, value) VALUES (?, ?, ?)');
-    headers.forEach(header => {
-        stmt.run(nodeId, header.key, header.value);
-    });
-    stmt.finalize();
-    console.log(`Inserted ${headers.length} headers for node ID ${nodeId}`);
-}
+  const nodeCols = await getTableColumns('nodes');
+  const availableNodeCols = new Set(nodeCols);
+  const headerCols = await getTableColumns('node_headers');
+  const headerKey = headerCols.includes('header_key') ? 'header_key' : (headerCols.includes('name') ? 'name' : null);
+  const headerVal = headerCols.includes('header_value') ? 'header_value' : (headerCols.includes('value') ? 'value' : null);
+  const techCols = await getTableColumns('node_technologies');
+  const techCol = techCols.includes('technology') ? 'technology' : (techCols.includes('name') ? 'name' : null);
 
-// Insert technologies for a node
-function insertTechnologies(nodeId, technologies) {
-    const stmt = db.prepare('INSERT INTO node_technologies (node_id, name) VALUES (?, ?)');
-    technologies.forEach(tech => {
-        stmt.run(nodeId, tech);
-    });
-    stmt.finalize();
-    console.log(`Inserted ${technologies.length} technologies for node ID ${nodeId}`);
-}
+  const metaCandidates = ['ip','response_time_ms','title','ports','tls_cert','dirsearch_count','wappalyzer','headers'];
 
-// Insert vulnerabilities for a node
-function insertVulnerabilities(nodeId, vulnerabilities) {
-    console.log(`Attempting to insert ${vulnerabilities.length} vulnerabilities for node ID ${nodeId}`);
-    
-    const stmt = db.prepare('INSERT INTO node_vulnerabilities (node_id, description) VALUES (?, ?)');
-    vulnerabilities.forEach(vuln => {
-        console.log(`Inserting vulnerability: ${vuln}`);
-        stmt.run(nodeId, vuln);
-    });
-    stmt.finalize();
-    console.log(`Inserted ${vulnerabilities.length} vulnerabilities for node ID ${nodeId}`);
-}
+  // ensure website row if possible
+  const websiteUrl = (viz.website && viz.website.url) ? viz.website.url : path.basename(filePath).replace(/_viz.json$/i, '');
+  let websiteId = null;
+  try {
+    const existing = await getAsync('SELECT id FROM websites WHERE url = ?', [websiteUrl]).catch(()=>null);
+    if (existing && existing.id) websiteId = existing.id;
+    else await runAsync('INSERT OR IGNORE INTO websites (url, name) VALUES (?, ?)', [websiteUrl, websiteUrl]);
+    const row = await getAsync('SELECT id FROM websites WHERE url = ?', [websiteUrl]).catch(()=>null);
+    if (row && row.id) websiteId = row.id;
+  } catch (e) { /* ignore */ }
 
-// Insert relationship between nodes
-function insertRelationship(sourceId, targetId, type) {
-    return new Promise((resolve, reject) => {
-        const stmt = db.prepare('INSERT INTO node_relationships (source_node_id, target_node_id, relationship_type) VALUES (?, ?, ?)');
-        stmt.run(sourceId, targetId, type, function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                console.log(`Inserted relationship: ${sourceId} -> ${targetId} (${type})`);
-                resolve(this.lastID);
-            }
-        });
-        stmt.finalize();
-    });
-}
+  // start transaction
+  await runAsync('BEGIN TRANSACTION');
+  try {
+    const nodeIdMap = {};
 
-// Main function to insert recon data from file
-async function insertReconData(filePath) {
-    try {
-        // Load data from file
-        console.log(`Loading data from ${filePath}...`);
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        
-        if (!data.website || !data.nodes || !data.relationships) {
-            throw new Error('Invalid data format. Expected website, nodes, and relationships properties.');
+    // Insert or update nodes (merge-on-import)
+    for (const node of viz.nodes) {
+      const nodeValue = node.value || node.id;
+      // find existing node by website_id+value when possible
+      let existing = null;
+      try {
+        if (websiteId != null) existing = await getAsync('SELECT id FROM nodes WHERE website_id = ? AND value = ? LIMIT 1', [websiteId, nodeValue]).catch(()=>null);
+        if (!existing) existing = await getAsync('SELECT id FROM nodes WHERE value = ? LIMIT 1', [nodeValue]).catch(()=>null);
+      } catch (e) { existing = null; }
+
+      // prepare columns/values
+      const cols = [];
+      const vals = [];
+      const placeholders = [];
+      const mapping = {
+        website_id: websiteId,
+        value: nodeValue,
+        type: node.type || null,
+        status: node.status ?? null,
+        size: node.size ?? null,
+      };
+      for (const [k,v] of Object.entries(mapping)) {
+        if (availableNodeCols.has(k) && v !== undefined) {
+          cols.push(k); placeholders.push('?'); vals.push(v);
         }
-        
-        console.log('Data loaded successfully.');
-        console.log(`Website: ${data.website.url}`);
-        console.log(`Total nodes: ${data.nodes.length}`);
-        console.log(`Total relationships: ${data.relationships.length}`);
-        
-        // Clear existing data
-        console.log('\nClearing existing data...');
-        clearTables();
-        
-        // Insert website
-        console.log('\nInserting website...');
-        const websiteId = await insertWebsite(data.website.url, data.website.name);
-        
-        // Insert nodes
-        console.log('\nInserting nodes...');
-        const nodeIds = {};
-        for (const node of data.nodes) {
-            const nodeId = await insertNode(websiteId, node);
-            nodeIds[node.value] = nodeId;
+      }
+      for (const m of metaCandidates) {
+        if (availableNodeCols.has(m) && node.meta && Object.prototype.hasOwnProperty.call(node.meta, m)) {
+          cols.push(m); placeholders.push('?');
+          const v = node.meta[m];
+          vals.push((m === 'ports' || m === 'tls_cert' || m === 'wappalyzer' || m === 'headers') ? safeStringify(v) : v);
         }
-        
-        // Insert relationships
-        console.log('\nInserting relationships...');
-        for (const rel of data.relationships) {
-            const sourceId = nodeIds[rel.source];
-            const targetId = nodeIds[rel.target];
-            
-            if (!sourceId || !targetId) {
-                console.log(`Warning: Could not find node IDs for relationship ${rel.source} -> ${rel.target}`);
-                continue;
+      }
+
+      let dbNodeId = null;
+      if (existing && existing.id) {
+        // delete existing node and its child rows so we can insert a fresh one
+        try {
+          await runAsync('DELETE FROM node_headers WHERE node_id = ?', [existing.id]).catch(()=>{});
+          await runAsync('DELETE FROM node_technologies WHERE node_id = ?', [existing.id]).catch(()=>{});
+          await runAsync('DELETE FROM node_relationships WHERE source_node_id = ? OR target_node_id = ?', [existing.id, existing.id]).catch(()=>{});
+          await runAsync('DELETE FROM nodes WHERE id = ?', [existing.id]).catch(()=>{});
+        } catch(e) { /* ignore deletion errors */ }
+      }
+
+      // insert (fresh) node
+      if (cols.length > 0) {
+        const sql = `INSERT INTO nodes (${cols.join(',')}) VALUES (${placeholders.join(',')})`;
+        const res = await runAsync(sql, vals).catch(()=>null);
+        if (res && res.lastID) dbNodeId = res.lastID;
+      }
+
+      if (!dbNodeId) {
+        // fallback: try to find id by value
+        const found = await getAsync('SELECT id FROM nodes WHERE value = ? LIMIT 1', [nodeValue]).catch(()=>null);
+        if (found && found.id) dbNodeId = found.id;
+      }
+
+      if (dbNodeId) nodeIdMap[node.id || nodeValue] = dbNodeId;
+
+      // replace child headers and technologies for this node id
+      if (dbNodeId) {
+        if (headerKey && headerVal) {
+          await runAsync('DELETE FROM node_headers WHERE node_id = ?', [dbNodeId]).catch(()=>{});
+          if (node.meta && node.meta.headers) {
+            for (const [hk, hv] of Object.entries(node.meta.headers)) {
+              const hcols = ['node_id', headerKey, headerVal];
+              await runAsync(`INSERT INTO node_headers (${hcols.join(',')}) VALUES (?, ?, ?)`, [dbNodeId, hk, String(hv)]).catch(()=>{});
             }
-            
-            await insertRelationship(sourceId, targetId, rel.type);
+          }
         }
-        
-        console.log('\nData import completed successfully!');
-    } catch (error) {
-        console.error('Error importing data:', error);
-    } finally {
-        // Close the database connection
-        db.close((err) => {
-            if (err) {
-                console.error('Error closing database:', err.message);
-            } else {
-                console.log('Database connection closed.');
+        if (techCol) {
+          await runAsync('DELETE FROM node_technologies WHERE node_id = ?', [dbNodeId]).catch(()=>{});
+          if (Array.isArray(node.technologies)) {
+            for (const t of node.technologies) {
+              await runAsync(`INSERT INTO node_technologies (node_id, ${techCol}) VALUES (?, ?)`, [dbNodeId, String(t)]).catch(()=>{});
             }
-        });
+          }
+        }
+      }
     }
+
+    // Insert relationships (after nodes inserted)
+    if (Array.isArray(viz.relationships)) {
+      const relCols = await getTableColumns('node_relationships');
+      if (relCols && relCols.length) {
+        for (const rel of viz.relationships) {
+          const src = nodeIdMap[rel.source];
+          const tgt = nodeIdMap[rel.target];
+          if (src && tgt) await runAsync('INSERT OR IGNORE INTO node_relationships (source_node_id, target_node_id, relationship_type) VALUES (?, ?, ?)', [src, tgt, rel.type || 'contains']);
+        }
+      }
+    }
+
+    await runAsync('COMMIT');
+    console.log('Import completed successfully.');
+  } catch (err) {
+    await runAsync('ROLLBACK').catch(()=>{});
+    throw err;
+  }
 }
 
-// Run the insertion with the specified or default file
-console.log(`Starting import of ${dataFile}`);
-insertReconData(dataFile);
+(async () => {
+  try {
+    await importViz(vizPath);
+  } catch (err) {
+    console.error('Import failed:', err && err.message ? err.message : err);
+    process.exitCode = 1;
+  } finally {
+    db.close();
+  }
+})();
+

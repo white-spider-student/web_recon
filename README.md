@@ -1,154 +1,146 @@
-# Web Reconnaissance Tool
+# Web Recon Map
 
-A comprehensive web reconnaissance tool for discovering and visualizing domain information, subdomains, directories, and potential vulnerabilities.
+A small toolkit and visualization app for web reconnaissance results. The repo contains
+recon scripts (Python), data cleaning/formatting utilities, a Node/Express server that
+stores results in SQLite, and a React-based frontend for interactive graph visualizations.
 
-## Project Overview
+This README explains how the pieces fit together, how to run the server and frontend locally,
+how to import visualization JSON files, and some troubleshooting tips.
 
-This project provides a set of tools for conducting web reconnaissance on target domains:
+---
 
-1. **Subdomain Discovery**: Find subdomains of target websites
-2. **Directory Scanning**: Discover directories and files on websites
-3. **Technology Detection**: Identify technologies used by websites
-4. **Visualization**: Display reconnaissance data in an interactive graph
-5. **Data Storage**: Store and query reconnaissance results in a SQLite database
+## Repository layout (top-level)
 
-## Project Structure
+- `recon/` : Python scripts for running scans (ffuf, nmap, dirsearch, etc.)
+- `results/clean/` : cleaned output and per-site viz JSON files (e.g. `example.com_viz.json`)
+- `server/` : Node/Express server, SQLite DB and import utilities
+- `src/` : React frontend (create-react-app) and components (graph, Details panel)
+- `web_recon/` : higher-level orchestration and legacy recon scripts
+- `scripts/` : helper scripts for merging and processing results
 
+Files of special interest:
+- `server/import-visualized-data.js` - importer script that writes a viz JSON into the database
+- `server/dedupe-nodes.js` - utility to deduplicate nodes by `(website_id, value)`
+- `results/clean/<site>_viz.json` - canonical JSON file produced by the cleaning pipeline; contains `meta.*` fields (ip, headers, ports, etc.)
+- `src/components/DetailsPanel.jsx` - UI component that shows node metadata (reads `node.meta.*`)
+
+---
+
+## Quick start - developer machine
+
+Prerequisites:
+- Node.js >= 16
+- npm
+- Python 3.8+ (for recon scripts, optional)
+
+1. Install frontend dependencies
+
+```bash
+npm install
 ```
-.
-├── build/                  # React application build for the visualization interface
-├── public/                 # Static assets for the React application
-├── recon/                  # Python reconnaissance modules
-│   ├── ffuf_subs.py        # Subdomain discovery using ffuf
-│   ├── ffuf.py             # Directory scanning using ffuf
-│   ├── nmap_http.py        # HTTP service detection using nmap
-│   ├── webanalyze.py       # Technology detection using webanalyze
-│   └── whatweb.py          # Technology detection using whatweb
-├── server/                 # Node.js server for the visualization interface
-│   ├── data.db             # SQLite database for storing reconnaissance data
-│   ├── import-visualized-data.js   # Script to import visualization data
-│   ├── index.js            # Main server file
-│   ├── init-db.js          # Database initialization script
-│   └── schema.sql          # Database schema
-├── src/                    # React application source code
-│   ├── components/         # React components
-│   │   ├── DetailsPanel.jsx # Panel for displaying details about selected nodes
-│   │   ├── Graph.jsx       # Graph visualization component
-│   │   └── HierarchicalGraph.jsx # Hierarchical graph visualization
-│   └── types/              # TypeScript type definitions
-│       └── NodeTypes.js    # Node type definitions for the graph
-└── results/                # Directory for storing scan results
+
+2. Start the backend server (serves APIs and the visualization endpoint)
+
+```bash
+# from repository root
+node server/index.js
+# Server listens on http://localhost:3001 by default
 ```
 
-## Features
+3. Start the frontend (CRA)
 
-- **Subdomain Discovery**: Identify subdomains using various techniques
-- **Directory Scanning**: Find directories, files, and endpoints
-- **Technology Detection**: Identify web technologies, frameworks, and servers
-- **Vulnerability Identification**: Flag potential security issues
-- **Relationship Mapping**: Visualize relationships between domains, subdomains, directories
-- **Interactive Visualization**: Explore reconnaissance data using an interactive graph
-- **Data Export/Import**: Save and load reconnaissance data
+```bash
+npm start
+# opens http://localhost:3000
+```
 
-## Getting Started
+The frontend communicates with the server (default server URL: `http://localhost:3001`).
 
-### Prerequisites
+---
 
-- Node.js and npm
-- Python 3.x
-- SQLite3
-- Various reconnaissance tools (ffuf, nmap, etc.)
+## Importing visualization JSON files (the recommended flow)
 
-### Installation
+The cleaning/formatting pipeline writes per-site files to `results/clean/<site>_viz.json`.
+These files are the canonical form for a site's scan data and already include `meta.ip`,
+`meta.headers`, `meta.ports`, `meta.response_time_ms`, `meta.title`, and other useful fields.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/white-spider-student/web_recon.git
-   cd web_recon
-   ```
+To import a viz JSON into the server's SQLite DB (so the API can serve it), run:
 
-2. Install server dependencies:
-   ```bash
-   cd server
-   npm install
-   ```
+```bash
+node server/import-visualized-data.js results/clean/example.com_viz.json
+```
 
-3. Install frontend dependencies:
-   ```bash
-   cd ..
-   npm install
-   ```
+Behavior notes:
+- The importer attempts to detect existing nodes and will replace existing data for the same `(website_id, value)`.
+- If legacy duplicates exist, use `server/dedupe-nodes.js` to consolidate duplicates:
 
-4. Install Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+node server/dedupe-nodes.js
+```
 
-### Usage
+After import the server exposes two useful paths:
+- `GET /websites/:websiteId/nodes` — API built from DB (nodes, headers, technologies)
+- `GET /websites/:websiteId/viz` — returns the raw `results/clean/<site>_viz.json` file
 
-#### Running a Scan
+If you prefer the raw JSON (it always includes `meta.ip`), fetch the `/viz` endpoint from the frontend.
 
-1. Start a scan with the web scanner tool:
-   ```bash
-   python web_scanner.py -d example.com
-   ```
-   
-2. Extract and format the results:
-   ```bash
-   python dir_extract.py
-   ```
-   
-3. Import data into the database:
-   ```bash
-   cd server
-   node import-visualized-data.js ../results/recon_sql_*.json
-   ```
+---
 
-#### Starting the Visualization Server
+## Server endpoints (summary)
 
-1. Start the Node.js server:
-   ```bash
-   cd server
-   npm start
-   ```
-   
-2. Start the React development server:
-   ```bash
-   npm start
-   ```
-   
-3. Open your browser and navigate to `http://localhost:3000`
+- `GET /websites` - list websites
+- `POST /websites` - create website record
+- `GET /websites/:websiteId/nodes` - get nodes for a website (DB-backed)
+- `GET /websites/:websiteId/viz` - returns the raw viz JSON file (from `results/clean`)
+- `POST /websites/:websiteId/nodes` - create a node via API
+- `POST /nodes/:sourceNodeId/relationships/:targetNodeId` - create relationship
+- `GET /nodes/:nodeId/relationships` - get relationships for a node
 
-## Visualization
+See `server/index.js` for the full implementation and additional helper routes.
 
-The visualization interface displays:
+---
 
-- **Domains**: Main target domains
-- **Subdomains**: Discovered subdomains
-- **Directories**: Discovered directories and files
-- **Relationships**: Connections between different entities
-- **Details**: Information about selected nodes including status codes, content types, etc.
+## Frontend notes
 
-## Database Schema
+- The React app expects nodes to have a `meta` object with common fields. `DetailsPanel.jsx` is defensive and supports both `node.meta.*` shapes and older shapes.
+- To use the raw viz JSON directly in the frontend, call `/websites/:id/viz` and feed `viz.nodes` into the visualization component.
 
-The application uses a SQLite database with the following main tables:
+---
 
-- **websites**: Information about target websites
-- **nodes**: Discovered entities (domains, subdomains, directories, etc.)
-- **node_relationships**: Connections between nodes
-- **node_vulnerabilities**: Detected vulnerabilities
-- **node_technologies**: Detected technologies
-- **node_headers**: HTTP headers
+## Development & debugging tips
+
+- To inspect the DB directly:
+
+```bash
+sqlite3 server/data.db
+# then use PRAGMA table_info('nodes'); and SELECT queries
+```
+
+- If the server fails to start because port `3001` is in use, free it or run the server behind a proxy.
+- When importing, watch the server logs for errors about missing columns — `server/index.js` contains logic to add optional meta columns when missing.
+
+---
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome. Please open issues or PRs. Suggested workflow:
+
+1. Fork the repo
+2. Create a topic branch
+3. Run tests (if you add them) and verify the server and importer locally
+4. Submit a PR with a clear description and tests where appropriate
+
+Commit message convention used in this repo follows conventional commits where possible (e.g., `feat:`, `fix:`, `docs:`).
+
+---
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is provided under the MIT License — see the `LICENSE` file if present.
 
-## Acknowledgments
+---
 
-- This tool uses various open-source reconnaissance tools
-- Visualization is built using React and D3.js
+If you'd like, I can also:
+- add a short `server/README.md` with server-specific commands,
+- create a `CONTRIBUTING.md` with detailed contributor guidelines,
+- add a GitHub Actions workflow to run tests when PRs are opened.

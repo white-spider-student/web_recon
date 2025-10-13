@@ -1,41 +1,105 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import './Graph.css';
 import ForceGraph2D from 'react-force-graph-2d';
 import { forceManyBody, forceCollide, forceLink, forceCenter, forceRadial } from 'd3-force';
 
 export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], highlightPath = [] }) => {
   const containerRef = useRef(null);
   const fgRef = useRef(null);
+  const suppressAutoFit = useRef(false);
+  const didAutoFitRef = useRef(false);
   const [size, setSize] = useState({ width: 800, height: 520 });
   const [levels, setLevels] = useState(new Map());
+  const [expandedNodes, setExpandedNodes] = useState(new Set());
+  const [maxVisibleLevel, setMaxVisibleLevel] = useState(null); // when set, force visibility by level
+
+  // Ensure any leftover debug panel from previous builds or edits is removed from the DOM
+  useEffect(() => {
+    try {
+      if (typeof document !== 'undefined') {
+        const old = document.getElementById('graph-debug');
+        if (old) old.remove();
+      }
+    } catch (e) { /* ignore */ }
+  }, []);
+
+  // Local small component for level buttons rendered over the graph
+  const LevelButtons = () => {
+    // compute the current max existing level from data
+    const maxLevel = React.useMemo(() => {
+      if (!data || !data.nodes) return 1;
+      let mx = 1;
+      data.nodes.forEach(n => {
+        const l = levels.get(n.id) ?? (n.type === 'domain' ? 1 : (n.type === 'subdomain' || n.type === 'directory' ? 2 : 3));
+        if (l > mx) mx = l;
+      });
+      return mx;
+    }, [data, levels]);
+
+    const cur = maxVisibleLevel === null ? 1 : maxVisibleLevel;
+
+    const setLevel = (lvl) => {
+      const newLvl = Math.max(1, Math.min(maxLevel, lvl));
+      setExpanded(() => new Set());
+      setMaxVisibleLevel(newLvl);
+    };
+
+    return (
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button onClick={() => setLevel((maxVisibleLevel===null?1:maxVisibleLevel) - 1)} title="Decrease level">−</button>
+        <div className="level-display" style={{ minWidth: 84, textAlign: 'center', padding: '6px 10px', borderRadius: 6 }}>Level {cur}</div>
+        <button onClick={() => setLevel((maxVisibleLevel===null?1:maxVisibleLevel) + 1)} title="Increase level">+</button>
+        <button onClick={() => { setMaxVisibleLevel(null); setExpanded(() => new Set()); }} title="Clear level" style={{ marginLeft: 6 }}>Clear</button>
+      </div>
+    );
+  };
+
+  // Load persisted expandedNodes from localStorage once
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('expandedNodes');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) setExpandedNodes(new Set(arr));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  // centralized setter that persists and emits event
+  const setExpanded = useCallback((updater) => {
+    setExpandedNodes(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : new Set(updater);
+      // Debug logging to help trace expansion changes
+      try { console.debug('[graph] setExpanded ->', Array.from(next)); } catch (e) {}
+      try { window.dispatchEvent(new CustomEvent('graphExpansionChanged', { detail: { expanded: Array.from(next) } })); } catch (e) {}
+      try { localStorage.setItem('expandedNodes', JSON.stringify(Array.from(next))); } catch (e) {}
+      return next;
+    });
+  }, []);
 
   // Compute node levels and update forces
   useEffect(() => {
     if (!data?.nodes?.length || !fgRef.current) return;
 
     const fg = fgRef.current;
-    const rootNode = data.nodes.find(n => n.type === 'domain');
-    if (!rootNode) return;
+    const root = data.nodes.find(n => n.type === 'domain');
+    if (!root) return;
 
-    // Assign hierarchical levels
+    // Assign hierarchical levels (1 = root domain, 2 = subdomain/directory, 3 = endpoint/file)
     const newLevels = new Map();
     data.nodes.forEach(node => {
       switch(node.type) {
-        case 'domain': newLevels.set(node.id, 0); break;
-        case 'subdomain': newLevels.set(node.id, 1); break;
+        case 'domain': newLevels.set(node.id, 1); break;
+        case 'subdomain': newLevels.set(node.id, 2); break;
         case 'directory': newLevels.set(node.id, 2); break;
         case 'endpoint':
         case 'file': newLevels.set(node.id, 3); break;
-        default: newLevels.set(node.id, 4);
+        default: newLevels.set(node.id, 3);
       }
     });
     setLevels(newLevels);
-      
-      // Auto-expand root domain on initial load
-      const rootNode = data.nodes.find(n => n.type === 'domain');
-      if (rootNode) {
-        setExpandedNodes(prev => new Set([...prev, rootNode.id]));
-      }
-    }
   }, [data]);
 
   // Function to expand all parents of a node to make it visible
@@ -52,60 +116,186 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     };
     
     findParents(nodeId);
-    setExpandedNodes(prev => new Set([...prev, ...nodesToExpand]));
+  setExpanded(prev => new Set([...prev, ...nodesToExpand]));
   }, [data]);
 
   // Expose zoom function globally
   useEffect(() => {
-    window.graphInstance = {
-      zoomToNode: (nodeId, zoom = 2, duration = 800) => {
-        const node = (data.nodes || []).find(n => n.id === nodeId);
-        if (fgRef.current && node) {
-          // Expand all parents to make node visible
-          expandToNode(nodeId);
-          setTimeout(() => {
-            if (fgRef.current && node.x !== undefined && node.y !== undefined) {
-              fgRef.current.centerAt(node.x, node.y, duration);
-              fgRef.current.zoom(zoom, duration);
-            }
-          }, 100);
+    const zoomToNode = (nodeId, zoom = 2, duration = 800) => {
+      const node = (data.nodes || []).find(n => n.id === nodeId);
+      if (fgRef.current && node) {
+        expandToNode(nodeId);
+        setTimeout(() => {
+          if (fgRef.current && isFinite(node.x) && isFinite(node.y)) {
+            // prevent onEngineStop from auto-fitting immediately after programmatic zoom
+            suppressAutoFit.current = true;
+            fgRef.current.centerAt(node.x, node.y, duration);
+            fgRef.current.zoom(zoom, duration);
+            // clear suppression after animation completes
+            setTimeout(() => { suppressAutoFit.current = false; }, duration + 50);
+          }
+        }, 100);
+      }
+    };
+
+    const expandType = (type) => {
+      if (!data || !data.nodes) return;
+      const roots = data.nodes.filter(n => n.type === type).map(n => n.id);
+      setExpanded(prev => new Set([...prev, ...roots]));
+    };
+
+    const expandNode = (nodeId) => setExpanded(prev => new Set([...prev, nodeId]));
+    const collapseNode = (nodeId) => setExpanded(prev => { const next = new Set(prev); next.delete(nodeId); return next; });
+    const toggleNode = (nodeId) => setExpanded(prev => { const next = new Set(prev); if (next.has(nodeId)) next.delete(nodeId); else next.add(nodeId); return next; });
+    const collapseAll = () => setExpanded(() => new Set());
+    // Expand immediate children of a node (one level)
+    const expandChildren = (nodeId) => {
+      if (!data || !data.links) return;
+      const children = data.links.filter(l => l.source === nodeId && l.type === 'contains').map(l => l.target);
+      if (!children.length) return;
+      setExpanded(prev => new Set([...prev, ...children]));
+    };
+
+    // Recursively expand all descendants of a node
+    const expandAllDescendants = (nodeId) => {
+      if (!data || !data.links) return;
+      const toVisit = [nodeId];
+      const all = new Set();
+      while (toVisit.length) {
+        const cur = toVisit.pop();
+        const kids = data.links.filter(l => l.source === cur && l.type === 'contains').map(l => l.target);
+        for (const k of kids) {
+          if (!all.has(k)) {
+            all.add(k);
+            toVisit.push(k);
+          }
         }
       }
+      setExpanded(prev => new Set([...prev, ...all]));
+    };
+
+    // Expand up to a given hierarchical level (0 = root only). When used we switch to
+    // a level-driven visibility mode: getVisibleNodes will return nodes whose level <= given
+    // level and ignore the normal expansion set. This prevents accidentally expanding beyond
+    // the maximum depth present in the graph.
+    const expandToLevel = (level) => {
+      // compute integer level
+      const lvl = Number.isFinite(Number(level)) ? Math.max(0, Math.floor(Number(level))) : 0;
+      // clear manual expansions to avoid conflicting state
+      setExpanded(() => new Set());
+      setMaxVisibleLevel(lvl);
+      try { console.debug('[graph] expandToLevel ->', lvl); } catch (e) {}
+    };
+
+    const clearLevel = () => {
+      setMaxVisibleLevel(null);
+      try { console.debug('[graph] clearLevel'); } catch (e) {}
+    };
+
+    // Shrink (collapse) immediate children of a node
+    const shrinkChildren = (nodeId) => {
+      if (!data || !data.links) return;
+      const children = data.links.filter(l => l.source === nodeId && l.type === 'contains').map(l => l.target);
+      if (!children.length) return;
+      setExpanded(prev => {
+        const next = new Set(prev);
+        children.forEach(c => next.delete(c));
+        return next;
+      });
+    };
+
+    const isExpanded = (nodeId) => expandedNodes.has(nodeId);
+
+  // debug overlay removed: no DOM debug panel
+
+    // Wrap methods to log calls and update debug overlay
+    window.graphInstance = {
+      zoomToNode: (...a) => { try { console.debug('[graph] zoomToNode', ...a); } catch(e){}; return zoomToNode(...a); },
+      expandType: (...a) => { try { console.debug('[graph] expandType', ...a); } catch(e){}; return expandType(...a); },
+      expandNode: (...a) => { try { console.debug('[graph] expandNode', ...a); } catch(e){}; return expandNode(...a); },
+      collapseNode: (...a) => { try { console.debug('[graph] collapseNode', ...a); } catch(e){}; return collapseNode(...a); },
+      toggleNode: (...a) => { try { console.debug('[graph] toggleNode', ...a); } catch(e){}; return toggleNode(...a); },
+      collapseAll: (...a) => { try { console.debug('[graph] collapseAll', ...a); } catch(e){}; return collapseAll(...a); },
+      expandChildren: (...a) => { try { console.debug('[graph] expandChildren', ...a); } catch(e){}; return expandChildren(...a); },
+      expandAllDescendants: (...a) => { try { console.debug('[graph] expandAllDescendants', ...a); } catch(e){}; return expandAllDescendants(...a); },
+      shrinkChildren: (...a) => { try { console.debug('[graph] shrinkChildren', ...a); } catch(e){}; return shrinkChildren(...a); },
+      expandToLevel: (...a) => { try { console.debug('[graph] expandToLevel', ...a); } catch(e){}; return expandToLevel(...a); },
+      clearLevel: (...a) => { try { console.debug('[graph] clearLevel', ...a); } catch(e){}; return clearLevel(...a); },
+      isExpanded: (...a) => { try { console.debug('[graph] isExpanded', ...a); } catch(e){}; return isExpanded(...a); },
+      getExpandedNodes: () => { try { console.debug('[graph] getExpandedNodes'); } catch(e){}; return Array.from(expandedNodes); }
     };
   }, [data, expandToNode]);
 
   // Filter visible nodes based on hierarchy and expansion state
   const getVisibleNodes = useCallback(() => {
     if (!data || !data.nodes) return [];
-    
-    const visibleNodes = [];
-    const visited = new Set();
-    
-    // Start with root domain
-    const rootNode = data.nodes.find(n => n.type === 'domain');
-    if (!rootNode) return data.nodes.slice(0, 10); // Fallback: show first 10 nodes
-    
-    const traverse = (nodeId, level = 0) => {
-      if (visited.has(nodeId)) return;
-      visited.add(nodeId);
-      
-      const node = data.nodes.find(n => n.id === nodeId);
-      if (!node) return;
-      
-      // Add level information for better layout
-      node.level = level;
-      visibleNodes.push(node);
-      
-      // If node is expanded, show its children
-      if (expandedNodes.has(nodeId)) {
-        const childLinks = data.links.filter(l => l.source === nodeId && l.type === 'contains');
-        childLinks.forEach(link => {
-          traverse(link.target, level + 1);
-        });
+
+    // Build parent map from links
+    const parentMap = new Map();
+    (data.links || []).forEach(l => {
+      if (l.type !== 'contains') return;
+      const src = typeof l.source === 'object' ? l.source.id : l.source;
+      const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+      const arr = parentMap.get(tgt) || [];
+      arr.push(src);
+      parentMap.set(tgt, arr);
+    });
+
+    const visible = new Set();
+    // If level-driven visibility mode is active, show nodes up to that level only
+    if (maxVisibleLevel !== null) {
+      data.nodes.forEach(n => {
+        const lvl = levels.get(n.id) ?? (n.type === 'domain' ? 1 : (n.type === 'subdomain' || n.type === 'directory' ? 2 : 3));
+        if (lvl <= maxVisibleLevel) visible.add(n.id);
+      });
+    } else {
+      // Show root domain and its immediate subdomain children by default
+      const root = data.nodes.find(n => n.type === 'domain');
+      if (root) visible.add(root.id);
+      (data.links || []).forEach(l => {
+        if (l.type !== 'contains') return;
+        const src = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+        if (src === root?.id) {
+          const childNode = data.nodes.find(nn => nn.id === tgt);
+          if (childNode && childNode.type === 'subdomain') visible.add(tgt);
+        }
+      });
+    }
+
+    // Helper: is any ancestor expanded?
+    const isAncestorExpanded = (nodeId, seen = new Set()) => {
+      if (seen.has(nodeId)) return false;
+      seen.add(nodeId);
+      const parents = parentMap.get(nodeId) || [];
+      for (const p of parents) {
+        if (expandedNodes.has(p)) return true;
+        if (isAncestorExpanded(p, seen)) return true;
       }
+      return false;
     };
-    
-    traverse(rootNode.id, 0);
+
+    // Include endpoints and files only if they have an expanded ancestor
+    data.nodes.forEach(n => {
+      if (n.type === 'endpoint' || n.type === 'file' || n.type === 'directory' || n.type === 'subdomain') {
+        if (maxVisibleLevel === null) {
+          // normal mode: include only if ancestor expanded
+          if (isAncestorExpanded(n.id)) visible.add(n.id);
+        } else {
+          // level mode: already included above by level check
+        }
+      }
+    });
+
+    // Build resulting visible nodes array and add simple level hints
+    const visibleNodes = [];
+    data.nodes.forEach(n => {
+      if (visible.has(n.id)) {
+        n.level = n.type === 'domain' ? 1 : (n.type === 'subdomain' || n.type === 'directory' ? 2 : 3);
+        visibleNodes.push(n);
+      }
+    });
+
     return visibleNodes;
   }, [data, expandedNodes]);
   
@@ -114,9 +304,11 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     if (!data || !data.links) return [];
     
     const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
-    return data.links.filter(l => 
-      visibleNodeIds.has(l.source) && visibleNodeIds.has(l.target)
-    );
+    return data.links.filter(l => {
+      const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+      const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+      return visibleNodeIds.has(sourceId) && visibleNodeIds.has(targetId);
+    });
   }, [data]);
 
   // Enhanced color mapping based on hierarchy
@@ -167,24 +359,19 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     const hasChildren = data?.links?.some(l => l.source === node.id && l.type === 'contains');
     
     if (hasChildren) {
-      // Toggle expansion state
-      setExpandedNodes(prev => {
+      // Toggle expansion state using centralized setter (persists and emits change event)
+      setExpanded(prev => {
         const newSet = new Set(prev);
         if (newSet.has(node.id)) {
-          // Collapse: remove this node and all its descendants from expanded set
-          const toRemove = new Set([node.id]);
-          const findDescendants = (nodeId) => {
-            const childLinks = data.links.filter(l => l.source === nodeId && l.type === 'contains');
-            childLinks.forEach(link => {
-              toRemove.add(link.target);
-              findDescendants(link.target);
-            });
-          };
-          findDescendants(node.id);
-          
-          toRemove.forEach(id => newSet.delete(id));
+          // Collapse: remove this node and its immediate children (do not recurse)
+          newSet.delete(node.id);
+          const childLinks = data.links.filter(l => l.source === node.id && l.type === 'contains');
+          childLinks.forEach(link => newSet.delete(link.target));
         } else {
+          // Expand: add node id (do not auto-expand grandchildren)
           newSet.add(node.id);
+          // For convenience, also ensure immediate children become visible only when desired.
+          // (Do not add descendants recursively.)
         }
         return newSet;
       });
@@ -273,9 +460,28 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   const visibleLinks = getVisibleLinks(visibleNodes);
   const graphData = { nodes: visibleNodes, links: visibleLinks };
 
+  // Auto-fit once when a new scan/data is loaded and visible nodes become available
+  useEffect(() => {
+    if (!fgRef.current || !visibleNodes || !visibleNodes.length) return;
+    if (didAutoFitRef.current) return;
+    const t = setTimeout(() => {
+      try {
+        if (fgRef.current.zoomToFit) fgRef.current.zoomToFit(800, 100);
+        didAutoFitRef.current = true;
+      } catch (e) { console.debug('[graph] auto fit error', e); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [visibleNodes, size.width, size.height]);
+
+  // Reset auto-fit flag when input data changes (new scan)
+  useEffect(() => {
+    didAutoFitRef.current = false;
+  }, [data]);
+
   // Set up hierarchical positioning
   useEffect(() => {
-    if (!fgRef.current || !visibleNodes.length) return;
+    try {
+      if (!fgRef.current || !visibleNodes.length) return;
     
     // Enhanced force configuration for hierarchical layout
     const simulation = fgRef.current.d3Force;
@@ -283,10 +489,10 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       // Radial force to organize by hierarchy level
       
       simulation('radial', forceRadial(
-        (node) => (node.level || 0) * 120 + 50, // Distance from center based on level
+        (node) => ((node.level || 1) - 1) * 160 + 60, // Distance: level 1 -> 0 offset, level 2 -> 160, level 3 -> 320
         size.width / 2,
         size.height / 2
-      ).strength(0.8));
+      ).strength(0.9));
       
       simulation('charge', forceManyBody()
         .strength((node) => {
@@ -301,23 +507,106 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
         .strength(0.9)
       );
       
-      simulation('link', forceLink(visibleLinks)
+      // Normalize links so d3-force receives node objects as source/target to avoid "node not found" errors
+      const idMap = new Map(visibleNodes.map(n => [n.id, n]));
+      const normalizedLinks = visibleLinks.map(l => {
+        const srcId = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
+        const srcNode = idMap.get(srcId);
+        const tgtNode = idMap.get(tgtId);
+        if (!srcNode || !tgtNode) return null; // will be filtered out
+        return Object.assign({}, l, { source: srcNode, target: tgtNode });
+      }).filter(Boolean);
+
+      simulation('link', forceLink(normalizedLinks)
         .id(d => d.id)
         .distance((link) => {
-          const sourceNode = visibleNodes.find(n => n.id === link.source.id || n.id === link.source);
-          const targetNode = visibleNodes.find(n => n.id === link.target.id || n.id === link.target);
-          const levelDiff = Math.abs((sourceNode?.level || 0) - (targetNode?.level || 0));
-          return 80 + levelDiff * 40; // Longer links between different levels
+          const sourceNode = link.source;
+          const targetNode = link.target;
+          const levelDiff = Math.abs((sourceNode?.level || 1) - (targetNode?.level || 1));
+          return 100 + levelDiff * 60; // Longer links between different levels
         })
         .strength(0.6)
       );
       
       simulation('center', forceCenter(size.width / 2, size.height / 2).strength(0.1));
     }
+    } catch (err) {
+      console.error('[graph] layout error', err);
+    }
   }, [visibleNodes, visibleLinks, size, getNodeSize]);
+
+  // Toolbar actions: zoom in/out, reset home (fit), expand all, collapse all
+  const zoomIn = () => {
+    try {
+      const fg = fgRef.current;
+      if (!fg) return;
+  let cur = 1;
+      try { cur = fg.zoom(); } catch (e) { /* ignore if not available */ }
+      const next = Math.min(6, cur * 1.3);
+  suppressAutoFit.current = true;
+  fg.zoom(next, 300);
+  setTimeout(() => { suppressAutoFit.current = false; }, 350);
+    } catch (e) { console.debug('[graph] zoomIn error', e); }
+  };
+
+  const zoomOut = () => {
+    try {
+      const fg = fgRef.current;
+      if (!fg) return;
+      let cur = 1;
+      try { cur = fg.zoom(); } catch (e) { /* ignore */ }
+      const next = Math.max(0.2, cur / 1.3);
+  suppressAutoFit.current = true;
+  fg.zoom(next, 300);
+  setTimeout(() => { suppressAutoFit.current = false; }, 350);
+    } catch (e) { console.debug('[graph] zoomOut error', e); }
+  };
+
+  const goHome = () => {
+    try {
+      const fg = fgRef.current;
+      if (!fg) return;
+      // center and fit
+  suppressAutoFit.current = true;
+  fg.zoomToFit(400, 40);
+  setTimeout(() => { suppressAutoFit.current = false; }, 450);
+    } catch (e) { console.debug('[graph] goHome error', e); }
+  };
+
+  const handleExpandAll = () => {
+    if (!data || !data.links) return;
+    const parents = new Set();
+    data.links.forEach(l => {
+      if (l.type !== 'contains') return;
+      const src = typeof l.source === 'object' ? l.source.id : l.source;
+      parents.add(src);
+    });
+    setExpanded(prev => new Set([...prev, ...Array.from(parents)]));
+  };
+
+  const handleCollapseAll = () => {
+    setExpanded(() => new Set());
+  };
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {/* Level controls (placed over graph) */}
+      <div className="graph-toolbar">
+        <div className="panel">
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button onClick={zoomIn} title="Zoom in" aria-label="Zoom in">🔍+</button>
+            <button onClick={zoomOut} title="Zoom out" aria-label="Zoom out">🔍−</button>
+            <button onClick={goHome} title="Fit to view" aria-label="Home">🏠</button>
+          </div>
+
+          <div className="sep" />
+
+          <LevelButtons />
+
+          {/* removed expand/collapse buttons as requested */}
+        </div>
+      </div>
       <ForceGraph2D
         ref={fgRef}
         width={size.width}
@@ -334,106 +623,133 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
         
         // Link styling
         linkWidth={(link) => {
-          const isHighlighted = highlightPath.includes(String(link.source.id || link.source)) && 
-                               highlightPath.includes(String(link.target.id || link.target));
-          return isHighlighted ? 4 : 2;
+          const src = String(typeof link.source === 'object' ? link.source.id : link.source);
+          const tgt = String(typeof link.target === 'object' ? link.target.id : link.target);
+          const isHighlighted = highlightPath.includes(src) && highlightPath.includes(tgt);
+          if (isHighlighted) return 4;
+          return link.type === 'contains' ? 2.5 : 1;
         }}
         
         linkColor={(link) => {
-          const isHighlighted = highlightPath.includes(String(link.source.id || link.source)) && 
-                               highlightPath.includes(String(link.target.id || link.target));
-          
+          const src = String(typeof link.source === 'object' ? link.source.id : link.source);
+          const tgt = String(typeof link.target === 'object' ? link.target.id : link.target);
+          const isHighlighted = highlightPath.includes(src) && highlightPath.includes(tgt);
           if (isHighlighted) return '#F59E0B';
-          
-          return link.type === 'contains' ? 'rgba(59, 130, 246, 0.6)' : 'rgba(156, 163, 175, 0.4)';
+          return link.type === 'contains' ? 'rgba(96,165,250,0.92)' : 'rgba(156,163,175,0.28)';
         }}
         
-        linkDirectionalArrowLength={8}
+        linkDirectionalArrowLength={0}
         linkDirectionalArrowRelPos={0.9}
         linkDirectionalArrowColor={(link) => {
-          const isHighlighted = highlightPath.includes(String(link.source.id || link.source)) && 
-                               highlightPath.includes(String(link.target.id || link.target));
-          return isHighlighted ? '#F59E0B' : 'rgba(59, 130, 246, 0.8)';
+          const src = String(typeof link.source === 'object' ? link.source.id : link.source);
+          const tgt = String(typeof link.target === 'object' ? link.target.id : link.target);
+          const isHighlighted = highlightPath.includes(src) && highlightPath.includes(tgt);
+          return isHighlighted ? '#F59E0B' : 'rgba(96,165,250,0.9)';
+        }}
+        // Animate particles for highlighted links to show 'diff' or active paths
+        linkDirectionalParticles={1}
+        linkDirectionalParticleWidth={(link) => {
+          const src = String(typeof link.source === 'object' ? link.source.id : link.source);
+          const tgt = String(typeof link.target === 'object' ? link.target.id : link.target);
+          const isHighlighted = highlightPath.includes(src) && highlightPath.includes(tgt);
+          return isHighlighted ? 3 : 0;
+        }}
+        linkDirectionalParticleColor={(link) => {
+          const src = String(typeof link.source === 'object' ? link.source.id : link.source);
+          const tgt = String(typeof link.target === 'object' ? link.target.id : link.target);
+          const isHighlighted = highlightPath.includes(src) && highlightPath.includes(tgt);
+          return isHighlighted ? '#F59E0B' : 'rgba(0,0,0,0)';
+        }}
+        linkDirectionalParticleSpeed={(link) => {
+          const src = String(typeof link.source === 'object' ? link.source.id : link.source);
+          const tgt = String(typeof link.target === 'object' ? link.target.id : link.target);
+          const isHighlighted = highlightPath.includes(src) && highlightPath.includes(tgt);
+          return isHighlighted ? 0.8 : 0;
         }}
         
-        // Performance optimizations
-        cooldownTicks={100}
-        onEngineStop={() => fgRef.current?.zoomToFit(400, 50)}
+  // Performance optimizations
+  cooldownTicks={100}
+  onEngineStop={() => { if (!suppressAutoFit.current) fgRef.current?.zoomToFit(400, 50); }}
         
         // Custom node rendering for better visuals
         nodeCanvasObjectMode={() => 'after'}
         nodeCanvasObject={(node, ctx, globalScale) => {
-          // Draw expansion indicator for nodes with children
-          const hasChildren = data?.links?.some(l => l.source === node.id && l.type === 'contains');
-          const isExpanded = expandedNodes.has(node.id);
-          
-          if (hasChildren) {
+            // positions may be undefined early in the simulation; skip drawing until valid
+            if (node.x === undefined || node.y === undefined || !isFinite(node.x) || !isFinite(node.y)) return;
+
+            // Enhanced node rendering: draw circle with ring, optional glow, and a visible name label
             const nodeRadius = getNodeSize(node);
-            
-            // Draw expansion indicator
-            ctx.save();
-            ctx.fillStyle = isExpanded ? '#10B981' : '#6B7280';
-            ctx.font = `${Math.max(8, 12 / globalScale)}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            
-            const symbol = isExpanded ? '−' : '+';
-            const symbolSize = nodeRadius * 0.6;
-            
-            ctx.fillRect(
-              node.x - symbolSize / 2, 
-              node.y + nodeRadius + 8 - symbolSize / 2, 
-              symbolSize, 
-              symbolSize
-            );
-            
-            ctx.fillStyle = 'white';
-            ctx.fillText(symbol, node.x, node.y + nodeRadius + 8);
-            ctx.restore();
-          }
-          
-          // Draw node level indicator
-          if (node.level > 0) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.font = `${Math.max(6, 8 / globalScale)}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.fillText(`L${node.level}`, node.x, node.y - getNodeSize(node) - 15);
-            ctx.restore();
-          }
+            const hasChildren = data?.links?.some(l => l.source === node.id && l.type === 'contains');
+            const isExpanded = expandedNodes.has(node.id);
+            const isHighlighted = highlightedNodes.includes(String(node.id));
+
+            // glow for highlighted nodes
+            if (isHighlighted) {
+              try {
+                const glowSize = Math.max(nodeRadius * 2.5, 20);
+                const gradient = ctx.createRadialGradient(node.x, node.y, nodeRadius, node.x, node.y, glowSize);
+                gradient.addColorStop(0, getNodeColor(node));
+                gradient.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, glowSize, 0, 2 * Math.PI, false);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+              } catch (e) {}
+            }
+
+            // main node circle
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI, false);
+            ctx.fillStyle = getNodeColor(node);
+            ctx.fill();
+
+            // outer ring to indicate expanded state
+            ctx.lineWidth = isExpanded ? Math.max(2, 2 / Math.max(1, globalScale)) : 1;
+            ctx.strokeStyle = isExpanded ? 'rgba(16,185,129,0.95)' : 'rgba(255,255,255,0.06)';
+            ctx.stroke();
+
+            // draw name label below the node
+            try {
+              const label = node.label || node.value || node.id;
+              ctx.save();
+              ctx.font = `${Math.max(10, 12 / globalScale)}px Inter, Arial`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'top';
+              ctx.fillStyle = 'rgba(226, 239, 243, 0.95)';
+              // subtle background for text for readability
+              const textWidth = ctx.measureText(label).width;
+              const pad = 6;
+              const tx = node.x - textWidth / 2 - pad / 2;
+              const ty = node.y + nodeRadius + 8;
+              ctx.fillStyle = 'rgba(8,10,12,0.55)';
+              ctx.fillRect(tx, ty - 2, textWidth + pad, Math.max(16, 14 / Math.max(1, globalScale)) + 4);
+              ctx.fillStyle = 'rgba(226, 239, 243, 0.98)';
+              ctx.fillText(label, node.x, ty + 2);
+              ctx.restore();
+            } catch (e) {}
+
+            // Draw compact expansion indicator (small circle with +/−)
+            // Skip indicator for the root domain node to avoid showing a misleading '+' on root
+            if (hasChildren && node.type !== 'domain') {
+              ctx.save();
+              const indicatorR = Math.max(8, nodeRadius * 0.55);
+              const ix = node.x + nodeRadius - indicatorR;
+              const iy = node.y - nodeRadius + indicatorR;
+              ctx.beginPath();
+              ctx.arc(ix, iy, indicatorR, 0, 2 * Math.PI, false);
+              ctx.fillStyle = isExpanded ? '#10B981' : '#6B7280';
+              ctx.fill();
+              ctx.fillStyle = 'white';
+              ctx.font = `${Math.max(8, 10 / globalScale)}px Arial`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(isExpanded ? '−' : '+', ix, iy);
+              ctx.restore();
+            }
         }}
       />
       
-      {/* Hierarchy Legend */}
-      <div style={{
-        position: 'absolute',
-        top: 20,
-        right: 20,
-        background: 'rgba(31, 41, 55, 0.9)',
-        color: 'white',
-        padding: '12px',
-        borderRadius: '8px',
-        fontSize: '12px',
-        backdropFilter: 'blur(4px)'
-      }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Node Types</div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-          <div style={{ width: '12px', height: '12px', backgroundColor: '#DC2626', borderRadius: '50%', marginRight: '8px' }}></div>
-          <span>Target Domain</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-          <div style={{ width: '12px', height: '12px', backgroundColor: '#2563EB', borderRadius: '50%', marginRight: '8px' }}></div>
-          <span>Subdomains</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-          <div style={{ width: '12px', height: '12px', backgroundColor: '#059669', borderRadius: '50%', marginRight: '8px' }}></div>
-          <span>Directories</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div style={{ width: '12px', height: '12px', backgroundColor: '#EA580C', borderRadius: '50%', marginRight: '8px' }}></div>
-          <span>Endpoints</span>
-        </div>
-      </div>
+  {/* legend removed per user request - they already have an external explanation */}
     </div>
   );
 };
