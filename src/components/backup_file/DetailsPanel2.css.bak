@@ -1,0 +1,28 @@
+.details-panel {
+  width: 360px;
+  max-height: 100vh;
+  overflow: auto;
+  background: #0b1620;
+  color: #e6f6f8;
+  border-left: 1px solid rgba(255,255,255,0.04);
+  padding: 12px;
+  box-sizing: border-box;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+.panel-header { display: flex; justify-content: space-between; align-items: center; }
+.node-title strong { font-size: 16px; }
+.panel-tabs { display:flex; gap:8px; margin-top:8px; }
+.panel-tabs button { background: transparent; color: #a7c3c8; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.panel-tabs button.active { background: rgba(45,226,230,0.08); color: #2de2e6; }
+.panel-body { margin-top: 12px; }
+.info-grid { display:flex; flex-direction: column; gap:8px; }
+.info-row { display:flex; gap:8px; }
+.label { width: 110px; color: #9aa6b0; }
+.value { flex:1; }
+.headers-list .header-item { display:flex; justify-content: space-between; gap:8px; padding:4px 0; }
+.copy-btn { background: rgba(255,255,255,0.03); border: none; color: #9aa6b0; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.raw-meta { background: rgba(255,255,255,0.02); color: #d2f8ff; padding: 8px; border-radius:6px; margin-top:8px; max-height: 320px; overflow:auto; }
+.tech-item { padding:6px; background: rgba(255,255,255,0.02); border-radius:6px; margin-bottom:6px; }
+.vuln-item { padding:6px; background: rgba(255,50,50,0.05); border-radius:6px; margin-bottom:6px; }

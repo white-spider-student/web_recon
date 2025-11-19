@@ -1,3 +1,92 @@
+ # Web Recon Map
+
+A toolkit and UI for web reconnaissance: it collects subdomains, directories, HTTP response metadata, and technology fingerprints, then visualizes results in a graph UI and stores structured results in an SQLite database.
+
+This repository contains scripts to run scans, cleaning and formatting tools to produce a visualization JSON (viz), an importer that writes results into a normalized SQLite schema, and a small Express API + React frontend to explore results.
+
+## Quick start
+
+Prerequisites
+
+- Node.js (v16+/v18+/v20+ recommended)
+- Python 3.8+
+- git
+
+Install node dependencies (root contains the React app):
+
+```bash
+# from repo root
+npm install
+```
+
+Start the server API
+
+```bash
+# from repo root
+node server/index.js
+# server listens on http://localhost:3001 by default
+```
+
+Start the frontend
+
+```bash
+# from repo root
+npm start
+# opens React app (usually http://localhost:3000)
+```
+
+## Import a visualization JSON (viz)
+
+The pipeline creates cleaned viz JSON files under `results/clean/<host>_viz.json`.
+To import one into the database run:
+
+```bash
+node server/import-visualized-data.js results/clean/example.com_viz.json
+```
+
+We added safe import behavior:
+- If a node with the same `website_id` and `value` exists, the importer will replace it (delete and re-insert) so the DB row matches the current scan data.
+
+If duplicates already exist you can consolidate them with:
+
+```bash
+node server/dedupe-nodes.js
+```
+
+## API endpoints (useful)
+
+- `GET /websites` — list websites
+- `GET /websites/:websiteId/nodes` — nodes for a website (API-built shape)
+- `GET /websites/:websiteId/viz` — returns the raw viz JSON file from `results/clean` (exact file produced by the cleaning pipeline)
+- `POST /websites/:websiteId/nodes` — insert node (API)
+
+The `/websites/:websiteId/viz` endpoint is handy when you want the raw scan JSON (contains `meta.ip`, `meta.headers`, `meta.response_time_ms` etc.) rather than the API-assembled node objects.
+
+## Project layout (top-level)
+
+```
+./
+├─ server/               # Express API, importer, DB schema and helper scripts
+├─ src/                  # React frontend (Details panel, graph components)
+├─ results/clean/        # cleaned viz JSONs produced by the ETL
+├─ recon/                # scan helper scripts (ffuf, nmap wrappers, dirsearch)
+├─ scripts/              # utility scripts for result processing
+└─ README.md             # This file
+```
+
+## Troubleshooting & notes
+
+- If the frontend does not show `ip` or other fields, fetch the raw viz JSON via `/websites/:id/viz` — the viz file includes the original `meta` attributes written by the cleaner.
+- If the server fails to start because port 3001 is in use, stop the other process or start the server on a different port.
+- Some environment-specific fields (wappalyzer results, TLS cert parsing) require additional optional tools to be installed; these will be noted in the viz `meta` object when not available.
+
+## Contributing
+
+Please open issues or PRs. For code changes, follow the repository style and add tests where appropriate. If you change the DB schema, include a migration script or document the steps in `server/schema-documentation.md`.
+
+## License
+
+MIT
 # Web Recon Map
 
 A small toolkit and visualization app for web reconnaissance results. The repo contains

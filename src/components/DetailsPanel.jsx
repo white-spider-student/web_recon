@@ -1,149 +1,497 @@
 import React, { useState, useEffect } from 'react';
 import './DetailsPanel.css';
 
-// Defensive DetailsPanel: supports node.headers (array) or node.meta.headers (object),
-// and node.technologies or node.meta.technologies. Exports both named and default.
 export const DetailsPanel = ({ node, onClose }) => {
-	const [activeTab, setActiveTab] = useState('info');
-	const [showRaw, setShowRaw] = useState(false);
-	const [viewMode, setViewMode] = useState('compact'); // 'compact' | 'full'
-	const [headerQuery, setHeaderQuery] = useState('');
+  const [isPanEnabled, setIsPanEnabled] = useState(false);
+  const [activeTab, setActiveTab] = useState('info');
+  
+  // Reset tab when node changes
+  useEffect(() => {
+    setActiveTab('info');
+  }, [node?.id]);
+  
+  if (!node) return null;
 
-	useEffect(() => { setActiveTab('info'); }, [node?.id]);
-	if (!node) return null;
+  // Format node data
+  const status = String(node.status || '200');
+  const responseSize = formatSize(node.size);
+  // Prefer top-level fields but fall back to node.meta if needed
+  const headers = (node.headers && node.headers.length)
+    ? node.headers
+    : (node.meta && node.meta.headers)
+      ? Object.entries(node.meta.headers).map(([k, v]) => ({ key: k, value: v }))
+      : [];
 
-	// Prefer the fields produced by current viz JSON (meta.*)
-	const status = String(node.meta?.status ?? node.status ?? 'Unknown');
-	const size = node.meta?.size ?? node.size ?? null;
-	// coerce numeric-like values to numbers where possible
-	const coerceNumber = (v) => {
-		if (v == null) return null;
-		const n = Number(v);
-		return Number.isFinite(n) ? n : null;
-	};
-	const responseTime = coerceNumber(node.meta?.response_time_ms ?? node.meta?.responseTime ?? node.responseTime ?? null);
+  const technologies = (node.technologies && node.technologies.length)
+    ? node.technologies
+    : (node.meta && Array.isArray(node.meta.technologies))
+      ? node.meta.technologies
+      : [];
+  const vulnerabilities = node.vulnerabilities || [];
+  const urls = node.urls || [];
 
-	// Headers in current viz are an object under meta.headers. Prefer that shape.
-	const headersArray = (node.meta && node.meta.headers && typeof node.meta.headers === 'object')
-		? Object.entries(node.meta.headers).map(([k, v]) => ({ key: k, value: v == null ? '' : String(v) }))
-		: (Array.isArray(node.headers) ? node.headers : []);
+  // Helper function to format file size
+  function formatSize(bytes) {
+    if (!bytes) return 'Unknown';
+    const units = ['bytes', 'KB', 'MB', 'GB'];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
+  }
 
-	// Technologies are stored under meta.technologies in viz JSON
-	const technologies = Array.isArray(node.meta?.technologies) ? node.meta.technologies : (Array.isArray(node.technologies) ? node.technologies : []);
+  // Get appropriate status class based on HTTP status code
+  const getStatusClass = (statusStr) => {
+    if (statusStr.startsWith('2')) return 'status success';
+    if (statusStr.startsWith('3')) return 'status redirect';
+    if (statusStr.startsWith('4')) return 'status client-error';
+    if (statusStr.startsWith('5')) return 'status server-error';
+    return 'status unknown';
+  };
 
-	const ip = node.meta?.ip ?? node.ip ?? node.meta?.addr ?? null;
-	const ports = node.meta?.ports ?? node.ports ?? [];
-	const tls = node.meta?.tls_cert ?? node.meta?.tls ?? node.tls ?? null;
-	const urls = node.meta?.urls ?? node.urls ?? [];
-	const vulnerabilities = node.meta?.vulnerabilities ?? node.vulnerabilities ?? [];
-	const title = node.meta?.title ?? node.title ?? null;
-	const dirsearchCount = node.meta?.dirsearch_count ?? null;
-	const wappalyzer = node.meta?.wappalyzer ?? null;
+  // Get status text description
+  const getStatusText = (statusStr) => {
+    const statusTexts = {
+      '200': 'OK',
+      '201': 'Created',
+      '301': 'Moved Permanently',
+      '302': 'Found',
+      '304': 'Not Modified',
+      '400': 'Bad Request',
+      '401': 'Unauthorized',
+      '403': 'Forbidden',
+      '404': 'Not Found',
+      '500': 'Internal Server Error',
+      '502': 'Bad Gateway',
+      '503': 'Service Unavailable'
+    };
+    return statusTexts[statusStr] || '';
+  };
 
-	// Render ports with optional service names
-	const renderPorts = (portsList) => {
-		if (!portsList || !portsList.length) return 'None';
-		return portsList.map(p => {
-			if (p == null) return '';
-			if (typeof p === 'object') return `${p.port}${p.service ? `/${p.service}` : ''}`;
-			const n = coerceNumber(p);
-			return n !== null ? String(n) : String(p);
-		}).filter(Boolean).join(', ');
-	};
+  // Render appropriate vulnerability badge
+  const renderVulnerabilityBadge = (vuln) => {
+    const severity = vuln.includes('high') ? 'high' : 
+                    vuln.includes('medium') ? 'medium' : 'low';
+    
+    return (
+      <span className={`vuln-badge ${severity}`}>
+        {severity}
+      </span>
+    );
+  };
 
-	const copyToClipboard = async (text) => {
-		try { await navigator.clipboard.writeText(text); } catch (e) { /* ignore */ }
-	};
+  // Get icon for node type
+  const getNodeTypeIcon = (type) => {
+    const icons = {
+      'domain': '🌐',
+      'subdomain': '🔗',
+      'directory': '📁',
+      'endpoint': '📄',
+      'file': '📄'
+    };
+    return icons[type] || '❓';
+  };
 
-	const formatSize = (b) => {
-		const n = coerceNumber(b);
-		if (n == null) return 'Unknown';
-		if (n < 1024) return `${n} B`;
-		const units = ['KB', 'MB', 'GB'];
-		let val = n / 1024;
-		let i = 0;
-		while (val >= 1024 && i < units.length - 1) { val = val / 1024; i++; }
-		return `${val.toFixed(1)} ${units[i]}`;
-	};
+  // Get background gradient based on node type
+  const getNodeBackground = () => {
+    const colors = {
+      'domain': 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.05))',
+      'subdomain': 'linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(33, 150, 243, 0.05))',
+      'directory': 'linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(156, 39, 176, 0.05))',
+      'endpoint': 'linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 152, 0, 0.05))'
+    };
+    return colors[node.type] || 'linear-gradient(135deg, rgba(66, 66, 66, 0.1), rgba(66, 66, 66, 0.05))';
+  };
 
-	const filteredHeaders = headersArray.filter(h => {
-		if (!headerQuery) return true;
-		const q = headerQuery.toLowerCase();
-		return (h.key && h.key.toLowerCase().includes(q)) || (h.value && h.value.toLowerCase().includes(q));
-	});
+  return (
+    <aside className="details-panel" style={{background: getNodeBackground()}}>
+      <div className="panel-header">
+        <div className="node-title">
+          <span className="node-icon">{getNodeTypeIcon(node.type)}</span>
+          <h2>{node.value || node.label || 'Node Details'}</h2>
+        </div>
+        
+        <div className="node-meta">
+          <span className="node-type-badge">{node.type}</span>
+          {node.protocol && <span className="protocol-badge">{node.protocol}</span>}
+        </div>
+        
+        <button
+          className="close-button"
+          onClick={onClose}
+          title="Close"
+          aria-label="Close details panel"
+        >
+          ×
+        </button>
+      </div>
 
-	return (
-		<aside className="details-panel" role="dialog" aria-label="Node details">
-			<div className="panel-header">
-				<div className="node-title">
-					<strong>{node.value || node.label || node.id}</strong>
-					<div className="node-sub">{node.type || node.group || ''} {node.protocol ? `• ${node.protocol}` : ''}</div>
-				</div>
-				<div className="panel-actions">
-					<div className="view-toggle">
-						<button className={viewMode === 'compact' ? 'active' : ''} onClick={() => setViewMode('compact')} title="Compact view">Compact</button>
-						<button className={viewMode === 'full' ? 'active' : ''} onClick={() => setViewMode('full')} title="Full view">Full</button>
-					</div>
-					<button onClick={onClose} aria-label="Close">×</button>
-				</div>
-			</div>
+      <div className="panel-tabs">
+        <button 
+          className={`tab-button ${activeTab === 'info' ? 'active' : ''}`}
+          onClick={() => setActiveTab('info')}
+        >
+          <span className="tab-icon">ℹ️</span>
+          <span>Info</span>
+        </button>
+        <button 
+          className={`tab-button ${activeTab === 'tech' ? 'active' : ''}`}
+          onClick={() => setActiveTab('tech')}
+        >
+          <span className="tab-icon">⚙️</span>
+          <span>Tech</span>
+          {technologies.length > 0 && <span className="tab-badge">{technologies.length}</span>}
+        </button>
+        <button 
+          className={`tab-button ${activeTab === 'vuln' ? 'active' : ''}`}
+          onClick={() => setActiveTab('vuln')}
+          disabled={vulnerabilities.length === 0}
+        >
+          <span className="tab-icon">🔒</span>
+          <span>Security</span>
+          {vulnerabilities.length > 0 && <span className="tab-badge alert">{vulnerabilities.length}</span>}
+        </button>
+      </div>
 
-			<div className="panel-tabs">
-				<button className={activeTab === 'info' ? 'active' : ''} onClick={() => setActiveTab('info')}>Info</button>
-				<button className={activeTab === 'headers' ? 'active' : ''} onClick={() => setActiveTab('headers')}>Headers</button>
-				<button className={activeTab === 'tech' ? 'active' : ''} onClick={() => setActiveTab('tech')}>Tech</button>
-				<button className={activeTab === 'vuln' ? 'active' : ''} onClick={() => setActiveTab('vuln')}>Security</button>
-			</div>
+      <div className="panel-content">
+        {activeTab === 'info' && (
+          <>
+            <div className="info-section status-section">
+              <div className="status-card">
+                <div className={getStatusClass(status)}>
+                  <span className="status-code">{status}</span>
+                  <span className="status-text">{getStatusText(status)}</span>
+                </div>
+              </div>
+              
+              <div className="metrics-grid">
+                <div className="metric-card">
+                  <div className="metric-icon">📦</div>
+                  <div className="metric-content">
+                    <span className="metric-value">{responseSize}</span>
+                    <span className="metric-label">Size</span>
+                  </div>
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-icon">⏱️</div>
+                  <div className="metric-content">
+                    <span className="metric-value">{node.responseTime ? `${node.responseTime}ms` : 'N/A'}</span>
+                    <span className="metric-label">Response Time</span>
+                  </div>
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-icon">🔄</div>
+                  <div className="metric-content">
+                    <span className="metric-value">{node.lastSeen || 'Unknown'}</span>
+                    <span className="metric-label">Last Seen</span>
+                  </div>
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-icon">🔗</div>
+                  <div className="metric-content">
+                    <span className="metric-value">{(node.links?.length || 0) + (node.edges?.length || 0)}</span>
+                    <span className="metric-label">Connections</span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-			<div className="panel-body">
-				{activeTab === 'info' && (
-					<div className="info-grid">
-						{title && <div className="info-row"><div className="label">Title</div><div className="value">{title}</div></div>}
-						<div className="info-row"><div className="label">Status</div><div className="value">{status}</div></div>
-						<div className="info-row"><div className="label">Size</div><div className="value">{size ? formatSize(size) : 'Unknown'}</div></div>
-						<div className="info-row"><div className="label">Response Time</div><div className="value">{responseTime !== null ? `${responseTime} ms` : 'N/A'}</div></div>
-						<div className="info-row"><div className="label">IP</div><div className="value">{ip || 'Unknown'}</div></div>
-						<div className="info-row"><div className="label">Ports</div><div className="value">{renderPorts(ports)}</div></div>
-						<div className="info-row"><div className="label">TLS</div><div className="value">{tls ? (tls.common_name ?? tls.subject ?? tls.issuer ?? JSON.stringify(tls)) : 'No TLS info'}</div></div>
-						{dirsearchCount != null && <div className="info-row"><div className="label">Dirsearch</div><div className="value">{dirsearchCount}</div></div>}
-						{wappalyzer && <div className="info-row"><div className="label">Wappalyzer</div><div className="value">{wappalyzer.error ? wappalyzer.error : JSON.stringify(wappalyzer)}</div></div>}
-						<div className="info-row"><div className="label">URLs</div><div className="value">{(urls && urls.length) ? (<ul>{urls.map((u,i)=>(<li key={i}><a href={u} target="_blank" rel="noreferrer">{u}</a></li>))}</ul>) : 'None'}</div></div>
-						{/* compact headers preview */}
-						<div className="info-row"><div className="label">Headers</div><div className="value headers-list">{
-							headersArray.length ? (
-								viewMode === 'compact' ? (
-									<div>
-										<div className="header-preview">{headersArray.slice(0,3).map((h,i)=>(<div key={i} className="header-item"><strong>{h.key}</strong>: {h.value}</div>))}</div>
-										{headersArray.length > 3 && <button onClick={()=>setActiveTab('headers')}>Show all headers</button>}
-									</div>
-								) : (
-									headersArray.map((h,i)=>(<div key={i} className="header-item"><div className="header-key">{h.key}</div><div className="header-sep">:</div><div className="header-val">{h.value}</div><button className="copy-btn" onClick={()=>copyToClipboard(`${h.key}: ${h.value}`)} title="Copy header">Copy</button></div>))
-								)
-							) : (<div className="empty">No headers available</div>)
-						}</div></div>
+            {urls.length > 0 && (
+              <div className="info-section">
+                <div className="section-header">
+                  <h3>
+                    <span className="section-icon">🔗</span>
+                    URLs
+                    <span className="count-badge">{urls.length}</span>
+                  </h3>
+                </div>
+                <div className="urls-container">
+                  {urls.map((url, i) => (
+                    <div key={i} className="url-card">
+                      <div className="url-icon">🌐</div>
+                      <div className="url-content">
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="url-link">
+                          {url}
+                        </a>
+                        <div className="url-actions">
+                          <button className="url-action-btn" title="Copy URL">📋</button>
+                          <button className="url-action-btn" title="Open in new tab">↗️</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-						<div className="info-row"><div className="label">Raw meta</div><div className="value"><button onClick={()=>setShowRaw(s=>!s)}>{showRaw ? 'Hide' : 'Show'} raw</button>{showRaw && (<pre className="raw-meta">{JSON.stringify(node.meta || {}, null, 2)}</pre>)}</div></div>
-					</div>
-				)}
+            {headers.length > 0 ? (
+              <div className="info-section">
+                <div className="section-header">
+                  <h3>
+                    <span className="section-icon">📋</span>
+                    Headers 
+                    <span className="count-badge">{headers.length}</span>
+                  </h3>
+                  {headers.length > 5 && (
+                    <button className="section-action">
+                      Show All
+                    </button>
+                  )}
+                </div>
+                
+                <div className="accordion">
+                  <div className="headers-list">
+                    {headers.map((h, i) => (
+                      <div key={i} className="header-item">
+                        <span className="header-key">{h.key}</span>
+                        <span className="header-value">{h.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {headers.some(h => h.key.toLowerCase().includes('security') || 
+                              h.key.toLowerCase().includes('content-security') ||
+                              h.key.toLowerCase().includes('x-xss')) && (
+                  <div className="security-hint">
+                    <span className="hint-icon">🛡️</span>
+                    Security headers detected
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="info-section">
+                <h3>
+                  <span className="section-icon">📋</span>
+                  Headers
+                </h3>
+                <div className="empty-state">
+                  <span className="empty-icon">📭</span>
+                  <span>No headers information available</span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
-				{activeTab === 'headers' && (
-					<div className="headers-tab">
-						<div className="headers-controls"><input placeholder="Search headers..." value={headerQuery} onChange={e=>setHeaderQuery(e.target.value)} /></div>
-						<div className="headers-list-full">{filteredHeaders.length ? filteredHeaders.map((h,i)=>(<div key={i} className="header-item"><div className="header-key">{h.key}</div><div className="header-sep">:</div><div className="header-val">{h.value}</div><button className="copy-btn" onClick={()=>copyToClipboard(`${h.key}: ${h.value}`)} title="Copy header">Copy</button></div>)) : <div className="empty">No headers match</div>}</div>
-					</div>
-				)}
+        {activeTab === 'tech' && (
+          <>
+            <div className="info-section">
+              <div className="section-header">
+                <h3>
+                  <span className="section-icon">⚙️</span>
+                  Technologies 
+                  <span className="count-badge">{technologies.length}</span>
+                </h3>
+              </div>
+              {technologies.length > 0 ? (
+                <div className="tech-grid">
+                  {technologies.map((tech, i) => {
+                    // Determine tech category
+                    const category = 
+                      tech.includes('Server') || tech.includes('Apache') || tech.includes('Nginx') ? 'server' :
+                      tech.includes('React') || tech.includes('Vue') || tech.includes('Angular') ? 'frontend' :
+                      tech.includes('PHP') || tech.includes('Node') || tech.includes('Python') ? 'backend' :
+                      tech.includes('MySQL') || tech.includes('Postgres') || tech.includes('MongoDB') ? 'database' :
+                      'other';
+                    
+                    const categoryIcons = {
+                      'server': '🖥️',
+                      'frontend': '🖌️',
+                      'backend': '⚙️',
+                      'database': '🗄️',
+                      'other': '🧰'
+                    };
+                    
+                    return (
+                      <div key={i} className={`tech-card ${category}`}>
+                        <div className="tech-icon">{categoryIcons[category]}</div>
+                        <div className="tech-content">
+                          <span className="tech-name">{tech}</span>
+                          <span className="tech-category">{category}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <span className="empty-icon">🔍</span>
+                  <span>No technologies detected</span>
+                </div>
+              )}
+            </div>
+            
+            <div className="info-section">
+              <div className="section-header">
+                <h3>
+                  <span className="section-icon">📊</span>
+                  Technology Summary
+                </h3>
+              </div>
+              <div className="tech-summary">
+                {technologies.length > 0 ? (
+                  <div className="tech-chart">
+                    <div className="chart-legend">
+                      <div className="legend-item">
+                        <span className="legend-color frontend"></span>
+                        <span className="legend-label">Frontend</span>
+                      </div>
+                      <div className="legend-item">
+                        <span className="legend-color backend"></span>
+                        <span className="legend-label">Backend</span>
+                      </div>
+                      <div className="legend-item">
+                        <span className="legend-color server"></span>
+                        <span className="legend-label">Server</span>
+                      </div>
+                    </div>
+                    <div className="tech-risk-assessment">
+                      <div className="risk-header">Security Risk Assessment</div>
+                      <div className="risk-level low">Low Risk</div>
+                      <div className="risk-description">Current tech stack appears to be maintained and updated.</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="empty-state">No data available for technology summary</div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
-				{activeTab === 'tech' && (
-					<div className="tech-list">{technologies.length ? technologies.map((t,i)=>(<div className="tech-item" key={i}>{t}</div>)) : <div className="empty">No technologies detected</div>}</div>
-				)}
+        {activeTab === 'vuln' && (
+          <>
+            <div className="info-section">
+              <div className="section-header security-header">
+                <h3>
+                  <span className="section-icon">🛡️</span>
+                  Security Issues
+                  <span className={`count-badge ${vulnerabilities.length > 0 ? 'warning' : 'safe'}`}>
+                    {vulnerabilities.length}
+                  </span>
+                </h3>
+                <div className="security-actions">
+                  <button className="action-button" title="Export report">
+                    <span>📊</span>
+                  </button>
+                </div>
+              </div>
+              
+              {vulnerabilities.length > 0 ? (
+                <div className="vuln-list">
+                  {vulnerabilities.map((vuln, i) => {
+                    // Determine vulnerability type
+                    const vulnType = 
+                      vuln.includes('XSS') ? 'xss' :
+                      vuln.includes('SQL') ? 'sql' :
+                      vuln.includes('CSRF') ? 'csrf' :
+                      vuln.includes('auth') || vuln.includes('password') ? 'auth' :
+                      'other';
+                    
+                    return (
+                      <div key={i} className={`vuln-item ${vulnType}`}>
+                        <div className="vuln-severity">
+                          {renderVulnerabilityBadge(vuln)}
+                          <div className="vuln-icon">
+                            {vulnType === 'xss' ? '📝' :
+                             vulnType === 'sql' ? '🗃️' :
+                             vulnType === 'csrf' ? '🔄' :
+                             vulnType === 'auth' ? '🔑' : '⚠️'}
+                          </div>
+                        </div>
+                        <div className="vuln-details">
+                          <div className="vuln-title">{vuln}</div>
+                          <div className="vuln-description">
+                            {vulnType === 'xss' ? 'Possible cross-site scripting vulnerability' :
+                             vulnType === 'sql' ? 'Potential SQL injection point' :
+                             vulnType === 'csrf' ? 'Cross-site request forgery risk' :
+                             vulnType === 'auth' ? 'Authentication vulnerability detected' : 
+                             'Security issue detected'}
+                          </div>
+                          <div className="vuln-actions">
+                            <button className="vuln-action-btn">Details</button>
+                            <button className="vuln-action-btn">Fix</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="security-success">
+                  <div className="success-icon">✅</div>
+                  <div className="success-message">No vulnerabilities detected</div>
+                  <div className="success-detail">This node appears to be secure based on current scans</div>
+                </div>
+              )}
+            </div>
+            
+            <div className="info-section">
+              <div className="section-header">
+                <h3>
+                  <span className="section-icon">🔍</span>
+                  Security Scan History
+                </h3>
+              </div>
+              <div className="scan-history">
+                <div className="scan-timeline">
+                  <div className="scan-item">
+                    <div className="scan-date">{new Date().toLocaleDateString()}</div>
+                    <div className="scan-result clean">Clean</div>
+                    <div className="scan-detail">Full security scan</div>
+                  </div>
+                  <div className="scan-item">
+                    <div className="scan-date">{new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}</div>
+                    <div className="scan-result clean">Clean</div>
+                    <div className="scan-detail">Vulnerability assessment</div>
+                  </div>
+                </div>
+                <button className="scan-action">Run New Scan</button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
 
-				{activeTab === 'vuln' && (
-					<div className="vuln-list">{vulnerabilities.length ? vulnerabilities.map((v,i)=>(<div key={i} className="vuln-item">{v}</div>)) : <div className="empty">No issues found</div>}</div>
-				)}
-			</div>
-		</aside>
-	);
+      <div className="panel-footer">
+        <div className="footer-controls">
+          <label className="control-toggle">
+            <input 
+              type="checkbox"
+              checked={isPanEnabled}
+              onChange={(e) => setIsPanEnabled(e.target.checked)}
+            />
+            <span className="toggle-label">
+              <span className="toggle-icon">🔍</span>
+              Enable zoom & pan
+            </span>
+          </label>
+          
+          <div className="panel-actions">
+            <button className="panel-action-btn" title="Export data">
+              <span className="action-icon">📤</span>
+            </button>
+            <button className="panel-action-btn" title="Add to favorites">
+              <span className="action-icon">⭐</span>
+            </button>
+            <button className="panel-action-btn" title="Copy node info">
+              <span className="action-icon">📋</span>
+            </button>
+          </div>
+        </div>
+        
+        <div className="footer-info">
+          <div className="node-id">ID: {node.id || 'unknown'}</div>
+          <div className="panel-version">v2.3</div>
+        </div>
+      </div>
+    </aside>
+  );
 };
-
-export default DetailsPanel;
-
