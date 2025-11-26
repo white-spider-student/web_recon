@@ -218,27 +218,46 @@ export default function App() {
       console.log('Relationships received:', relationships.length);
       console.log('Sample relationships:', relationships.slice(0, 3));
       
-      // Transform nodes to match the expected format
+      // Normalize node types and transform nodes to the expected format
+      // This helps avoid problems where backend uses variants like 'dir' or 'sub'
+      // which the frontend layout expects as 'directory' / 'subdomain'.
+      const normalizeType = (t) => {
+        if (!t) return t;
+        const s = String(t).toLowerCase();
+        if (s === 'dir' || s === 'directory') return 'directory';
+        if (s === 'sub' || s === 'subdomain') return 'subdomain';
+        if (s === 'domain') return 'domain';
+        if (s === 'endpoint' || s === 'ep') return 'endpoint';
+        if (s === 'file') return 'file';
+        // unknown types fall back to the original token (lowercased)
+        return s;
+      };
+
       // Preserve the full node object so DetailsPanel can access node.meta, headers, technologies etc.
-      const transformedNodes = nodes.map(node => ({
-        // keep id/label/visual fields but also embed full raw node under _raw
-        id: node.id,
-        group: node.type,
-        type: node.type,
-        value: node.value,
-        status: node.status,
-        size: node.size,
-        label: node.value,
-        // spread raw node fields to make them available on the node object
-        ...node
-      }));
-      
-      // Transform relationships to match the expected format
-      const transformedLinks = relationships.map(rel => ({
-        source: rel.source,
-        target: rel.target,
-        type: rel.type || 'contains'
-      }));
+      const transformedNodes = nodes.map(node => {
+        const t = normalizeType(node.type || node.group);
+        const id = node.id || node.value;
+        return Object.assign({}, {
+          id: id,
+          group: t,
+          type: t,
+          value: node.value || id,
+          status: node.status,
+          size: node.size,
+          label: node.value || id
+        }, node);
+      });
+
+      // Transform relationships to match the expected format and ensure source/target are id strings
+      const transformedLinks = relationships.map(rel => {
+        const src = (rel.source && typeof rel.source === 'object') ? rel.source.id : rel.source;
+        const tgt = (rel.target && typeof rel.target === 'object') ? rel.target.id : rel.target;
+        return {
+          source: String(src),
+          target: String(tgt),
+          type: rel.type || 'contains'
+        };
+      });
       
       console.log('Final graph data:', { 
         nodes: transformedNodes.length, 
