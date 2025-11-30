@@ -218,46 +218,27 @@ export default function App() {
       console.log('Relationships received:', relationships.length);
       console.log('Sample relationships:', relationships.slice(0, 3));
       
-      // Normalize node types and transform nodes to the expected format
-      // This helps avoid problems where backend uses variants like 'dir' or 'sub'
-      // which the frontend layout expects as 'directory' / 'subdomain'.
-      const normalizeType = (t) => {
-        if (!t) return t;
-        const s = String(t).toLowerCase();
-        if (s === 'dir' || s === 'directory') return 'directory';
-        if (s === 'sub' || s === 'subdomain') return 'subdomain';
-        if (s === 'domain') return 'domain';
-        if (s === 'endpoint' || s === 'ep') return 'endpoint';
-        if (s === 'file') return 'file';
-        // unknown types fall back to the original token (lowercased)
-        return s;
-      };
-
+      // Transform nodes to match the expected format
       // Preserve the full node object so DetailsPanel can access node.meta, headers, technologies etc.
-      const transformedNodes = nodes.map(node => {
-        const t = normalizeType(node.type || node.group);
-        const id = node.id || node.value;
-        return Object.assign({}, {
-          id: id,
-          group: t,
-          type: t,
-          value: node.value || id,
-          status: node.status,
-          size: node.size,
-          label: node.value || id
-        }, node);
-      });
-
-      // Transform relationships to match the expected format and ensure source/target are id strings
-      const transformedLinks = relationships.map(rel => {
-        const src = (rel.source && typeof rel.source === 'object') ? rel.source.id : rel.source;
-        const tgt = (rel.target && typeof rel.target === 'object') ? rel.target.id : rel.target;
-        return {
-          source: String(src),
-          target: String(tgt),
-          type: rel.type || 'contains'
-        };
-      });
+      const transformedNodes = nodes.map(node => ({
+        // keep id/label/visual fields but also embed full raw node under _raw
+        id: node.id,
+        group: node.type,
+        type: node.type,
+        value: node.value,
+        status: node.status,
+        size: node.size,
+        label: node.value,
+        // spread raw node fields to make them available on the node object
+        ...node
+      }));
+      
+      // Transform relationships to match the expected format
+      const transformedLinks = relationships.map(rel => ({
+        source: rel.source,
+        target: rel.target,
+        type: rel.type || 'contains'
+      }));
       
       console.log('Final graph data:', { 
         nodes: transformedNodes.length, 
@@ -267,6 +248,17 @@ export default function App() {
       console.log('=== END DEBUG ===');
 
       setGraphData({ nodes: transformedNodes, links: transformedLinks });
+
+      // After the graph data updates, trigger a manual fit to show the full result set.
+      setTimeout(() => {
+        try {
+          if (window?.graphInstance?.manualFit) {
+            window.graphInstance.manualFit(420, 180, 60);
+          }
+        } catch (fitErr) {
+          console.debug('manualFit after scan failed', fitErr);
+        }
+      }, 320);
     } catch (err) {
       console.error('Error fetching data:', err);
       setError('Failed to fetch data from the server');
@@ -417,10 +409,6 @@ export default function App() {
                 }
 
                 setHighlightedNodes(highlightIds || [node.id]);
-                if (window && window.graphInstance && node) {
-                  // graphInstance is set in Graph.jsx, see below
-                  window.graphInstance.zoomToNode(node.id, 5.0, 1200);
-                }
               }}
             />
           </div>

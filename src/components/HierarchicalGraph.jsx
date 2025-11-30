@@ -7,7 +7,6 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   const containerRef = useRef(null);
   const fgRef = useRef(null);
   const suppressAutoFit = useRef(false);
-  const didAutoFitRef = useRef(false);
   const [size, setSize] = useState({ width: 800, height: 520 });
   const [levels, setLevels] = useState(new Map());
   const [expandedNodes, setExpandedNodes] = useState(new Set());
@@ -119,25 +118,26 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   setExpanded(prev => new Set([...prev, ...nodesToExpand]));
   }, [data]);
 
-  // Expose zoom function globally
-  useEffect(() => {
-    const zoomToNode = (nodeId, zoom = 2, duration = 800) => {
-      const node = (data.nodes || []).find(n => n.id === nodeId);
-      if (fgRef.current && node) {
-        expandToNode(nodeId);
-        setTimeout(() => {
-          if (fgRef.current && isFinite(node.x) && isFinite(node.y)) {
-            // prevent onEngineStop from auto-fitting immediately after programmatic zoom
-            suppressAutoFit.current = true;
-            fgRef.current.centerAt(node.x, node.y, duration);
-            fgRef.current.zoom(zoom, duration);
-            // clear suppression after animation completes
-            setTimeout(() => { suppressAutoFit.current = false; }, duration + 50);
-          }
-        }, 100);
+  const manualFit = useCallback((padding = 420, duration = 160, delay = 120) => {
+    suppressAutoFit.current = true;
+    setTimeout(() => {
+      const inst = fgRef.current;
+      if (!inst || typeof inst.zoomToFit !== 'function') {
+        suppressAutoFit.current = false;
+        return;
       }
-    };
+      try {
+        inst.zoomToFit(padding, duration);
+      } catch (e) {
+        console.debug('[graph] manualFit error', e);
+      } finally {
+        setTimeout(() => { suppressAutoFit.current = false; }, duration + 80);
+      }
+    }, Math.max(0, delay));
+  }, []);
 
+  // Expose zoom-related helpers globally
+  useEffect(() => {
     const expandType = (type) => {
       if (!data || !data.nodes) return;
       const roots = data.nodes.filter(n => n.type === type).map(n => n.id);
@@ -210,7 +210,6 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
 
     // Wrap methods to log calls and update debug overlay
     window.graphInstance = {
-      zoomToNode: (...a) => { try { console.debug('[graph] zoomToNode', ...a); } catch(e){}; return zoomToNode(...a); },
       expandType: (...a) => { try { console.debug('[graph] expandType', ...a); } catch(e){}; return expandType(...a); },
       expandNode: (...a) => { try { console.debug('[graph] expandNode', ...a); } catch(e){}; return expandNode(...a); },
       collapseNode: (...a) => { try { console.debug('[graph] collapseNode', ...a); } catch(e){}; return collapseNode(...a); },
@@ -222,9 +221,32 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       expandToLevel: (...a) => { try { console.debug('[graph] expandToLevel', ...a); } catch(e){}; return expandToLevel(...a); },
       clearLevel: (...a) => { try { console.debug('[graph] clearLevel', ...a); } catch(e){}; return clearLevel(...a); },
       isExpanded: (...a) => { try { console.debug('[graph] isExpanded', ...a); } catch(e){}; return isExpanded(...a); },
-      getExpandedNodes: () => { try { console.debug('[graph] getExpandedNodes'); } catch(e){}; return Array.from(expandedNodes); }
+      getExpandedNodes: () => { try { console.debug('[graph] getExpandedNodes'); } catch(e){}; return Array.from(expandedNodes); },
+      manualFit: (...a) => { try { console.debug('[graph] manualFit', ...a); } catch(e){}; return manualFit(...a); }
     };
-  }, [data, expandToNode]);
+  }, [data, expandToNode, manualFit]);
+
+  const focusOnNode = useCallback((node, { zoom = 1.8, duration = 600, delay = 140, retries = 3 } = {}) => {
+    if (!node) return;
+
+    const attempt = (remaining) => {
+      const inst = fgRef.current;
+      if (!inst || !isFinite(node.x) || !isFinite(node.y)) {
+        if (remaining <= 0) return;
+        setTimeout(() => attempt(remaining - 1), 120);
+        return;
+      }
+      suppressAutoFit.current = true;
+      try {
+        inst.centerAt(node.x, node.y, duration);
+        inst.zoom(zoom, duration);
+      } finally {
+        setTimeout(() => { suppressAutoFit.current = false; }, duration + 60);
+      }
+    };
+
+    setTimeout(() => attempt(retries), Math.max(0, delay));
+  }, []);
 
   // Filter visible nodes based on hierarchy and expansion state
   const getVisibleNodes = useCallback(() => {
@@ -354,6 +376,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   // Handle node click with expand/collapse functionality
   const handleNodeClick = useCallback((node) => {
     if (!node) return;
+    expandToNode(node.id);
     
     // Check if node has children
     const hasChildren = data?.links?.some(l => l.source === node.id && l.type === 'contains');
@@ -377,17 +400,11 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       });
     }
     
-    // Center on clicked node with animation
-    setTimeout(() => {
-      if (fgRef.current && node.x !== undefined && node.y !== undefined) {
-        fgRef.current.centerAt(node.x, node.y, 600);
-        fgRef.current.zoom(1.8, 600);
-      }
-    }, 200);
+    focusOnNode(node);
     
     // Notify parent component
     onNodeClick && onNodeClick(node, [node.id]);
-  }, [data, onNodeClick]);
+  }, [data, expandToNode, focusOnNode, onNodeClick]);
   
   // Generate rich tooltip content
   const getTooltip = useCallback((node) => {
@@ -459,24 +476,6 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   const visibleNodes = getVisibleNodes();
   const visibleLinks = getVisibleLinks(visibleNodes);
   const graphData = { nodes: visibleNodes, links: visibleLinks };
-
-  // Auto-fit once when a new scan/data is loaded and visible nodes become available
-  useEffect(() => {
-    if (!fgRef.current || !visibleNodes || !visibleNodes.length) return;
-    if (didAutoFitRef.current) return;
-    const t = setTimeout(() => {
-      try {
-        if (fgRef.current.zoomToFit) fgRef.current.zoomToFit(800, 100);
-        didAutoFitRef.current = true;
-      } catch (e) { console.debug('[graph] auto fit error', e); }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [visibleNodes, size.width, size.height]);
-
-  // Reset auto-fit flag when input data changes (new scan)
-  useEffect(() => {
-    didAutoFitRef.current = false;
-  }, [data]);
 
   // Set up hierarchical positioning
   useEffect(() => {
@@ -565,12 +564,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
 
   const goHome = () => {
     try {
-      const fg = fgRef.current;
-      if (!fg) return;
-      // center and fit
-  suppressAutoFit.current = true;
-  fg.zoomToFit(400, 40);
-  setTimeout(() => { suppressAutoFit.current = false; }, 450);
+      manualFit(400, 100, 80);
     } catch (e) { console.debug('[graph] goHome error', e); }
   };
 
@@ -669,7 +663,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
         
   // Performance optimizations
   cooldownTicks={100}
-  onEngineStop={() => { if (!suppressAutoFit.current) fgRef.current?.zoomToFit(400, 50); }}
+  onEngineStop={() => { /* disable automatic fit; manualFit handles explicit requests */ }}
         
         // Custom node rendering for better visuals
         nodeCanvasObjectMode={() => 'after'}

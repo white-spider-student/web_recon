@@ -1,496 +1,278 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import './DetailsPanel.css';
 
+const STATUS_MAP = {
+  '2': { label: 'OK', tone: 'good' },
+  '3': { label: 'Redirect', tone: 'warm' },
+  '4': { label: 'Client Error', tone: 'warn' },
+  '5': { label: 'Server Error', tone: 'alert' }
+};
+
+const formatBytes = (bytes) => {
+  if (typeof bytes !== 'number' || Number.isNaN(bytes)) return 'Unknown';
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+};
+
+const formatStatus = (status) => {
+  const normalized = String(status || '').trim() || '200';
+  const group = normalized[0];
+  const { label, tone } = STATUS_MAP[group] || { label: 'Unknown', tone: 'neutral' };
+  return { code: normalized, label, tone };
+};
+
+const extractHeaders = (node) => {
+  if (!node) return [];
+  if (Array.isArray(node.headers) && node.headers.length) {
+    return node.headers.map(({ key, value }) => ({
+      key: String(key || ''),
+      value: value == null ? '' : String(value)
+    }));
+  }
+  if (node.meta && node.meta.headers) {
+    return Object.entries(node.meta.headers).map(([key, value]) => ({
+      key: String(key || ''),
+      value: value == null ? '' : String(value)
+    }));
+  }
+  return [];
+};
+
+const extractTechnologies = (node) => {
+  if (!node) return [];
+  if (Array.isArray(node.technologies)) return node.technologies;
+  if (node.meta && Array.isArray(node.meta.technologies)) return node.meta.technologies;
+  return [];
+};
+
+const extractVulnerabilities = (node) => {
+  if (!node) return [];
+  if (Array.isArray(node.vulnerabilities)) return node.vulnerabilities;
+  return [];
+};
+
+const iconForType = (type) => {
+  switch (type) {
+    case 'domain':
+      return '🌐';
+    case 'subdomain':
+      return '🔗';
+    case 'directory':
+      return '📁';
+    case 'endpoint':
+      return '📄';
+    default:
+      return '🧩';
+  }
+};
+
 export const DetailsPanel = ({ node, onClose }) => {
-  const [isPanEnabled, setIsPanEnabled] = useState(false);
-  const [activeTab, setActiveTab] = useState('info');
-  
-  // Reset tab when node changes
+  const headers = useMemo(() => extractHeaders(node), [node]);
+  const technologies = useMemo(() => extractTechnologies(node), [node]);
+  const vulnerabilities = useMemo(() => extractVulnerabilities(node), [node]);
+
+  const [showFullResponse, setShowFullResponse] = useState(false);
+  const [activeTab, setActiveTab] = useState('headers');
+  const [panelWidth, setPanelWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = window.localStorage.getItem('detailsPanelWidth');
+      const parsed = stored ? parseInt(stored, 10) : NaN;
+      if (!Number.isNaN(parsed)) return Math.min(Math.max(parsed, 360), 960);
+    }
+    return 560; // default width
+  });
+  const minWidth = 360;
+  const maxWidth = 960;
+  const startDragRef = useRef({ active: false });
+
   useEffect(() => {
-    setActiveTab('info');
-  }, [node?.id]);
-  
+    const handleMove = (e) => {
+      if (!startDragRef.current.active) return;
+      const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, minWidth), maxWidth);
+      setPanelWidth(newWidth);
+    };
+    const handleUp = () => {
+      if (startDragRef.current.active) {
+        startDragRef.current.active = false;
+        window.localStorage.setItem('detailsPanelWidth', String(panelWidth));
+        document.body.classList.remove('dp-resizing');
+      }
+    };
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [panelWidth]);
+
+  const beginResize = (e) => {
+    e.preventDefault();
+    startDragRef.current.active = true;
+    document.body.classList.add('dp-resizing');
+  };
+
+  const resetWidth = () => {
+    setPanelWidth(560);
+    window.localStorage.setItem('detailsPanelWidth', '560');
+  };
+
+  useEffect(() => {
+    setShowFullResponse(false);
+  setActiveTab('headers');
+  }, [node]);
+
   if (!node) return null;
 
-  // Format node data
-  const status = String(node.status || '200');
-  const responseSize = formatSize(node.size);
-  // Prefer top-level fields but fall back to node.meta if needed
-  const headers = (node.headers && node.headers.length)
-    ? node.headers
-    : (node.meta && node.meta.headers)
-      ? Object.entries(node.meta.headers).map(([k, v]) => ({ key: k, value: v }))
-      : [];
+  const statusInfo = formatStatus(node?.status);
+  const responseTime = node?.responseTime ? `${node.responseTime} ms` : 'Unknown';
+  const responseSize = formatBytes(node?.size);
+  const lastSeen = node?.lastSeen || node?.timestamp || 'Unknown';
+  const urls = Array.isArray(node?.urls) ? node.urls : [];
+  const ipAddress = node?.ip || node?.meta?.ip || 'Unknown';
+  const server = node?.server || node?.meta?.server || 'Unknown';
+  const port = node?.port || node?.meta?.port || '—';
+  const scheme = node?.protocol || node?.scheme || node?.meta?.scheme || '—';
+  const nodeId = node?.label || node?.value || node?.id || 'Node details';
+  const nodeType = node?.type || 'node';
+  const totalConnections = (Array.isArray(node?.links) ? node.links.length : 0) +
+    (Array.isArray(node?.edges) ? node.edges.length : 0);
 
-  const technologies = (node.technologies && node.technologies.length)
-    ? node.technologies
-    : (node.meta && Array.isArray(node.meta.technologies))
-      ? node.meta.technologies
-      : [];
-  const vulnerabilities = node.vulnerabilities || [];
-  const urls = node.urls || [];
+  const responseCandidates = [
+    node?.raw,
+    node?.response,
+    node?.responseBody,
+    node?.body,
+    node?.meta?.raw,
+    node?.meta?.rawResponse,
+    node?.meta?.raw_response,
+    node?.meta?.response,
+    node?.meta?.responseBody,
+    node?.meta?.response_body,
+    node?.meta?.body,
+    node?.meta?.payload
+  ].filter((value) => typeof value === 'string' && value.trim().length > 0);
 
-  // Helper function to format file size
-  function formatSize(bytes) {
-    if (!bytes) return 'Unknown';
-    const units = ['bytes', 'KB', 'MB', 'GB'];
-    let size = bytes;
-    let unitIndex = 0;
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex++;
-    }
-    return `${size.toFixed(1)} ${units[unitIndex]}`;
-  }
+  const rawResponseText = responseCandidates.length
+    ? responseCandidates[0].trim()
+    : ((headers.length || statusInfo?.code) ? (() => {
+      const lines = [];
+      if (statusInfo?.code) {
+        lines.push(`HTTP ${statusInfo.code} ${statusInfo.label}`);
+      }
+      headers.forEach(({ key, value }) => {
+        lines.push(`${(key || 'Header')}: ${(value || '').trim()}`);
+      });
+      lines.push('');
+      lines.push('-- body not captured --');
+      return lines.join('\n');
+    })() : '');
 
-  // Get appropriate status class based on HTTP status code
-  const getStatusClass = (statusStr) => {
-    if (statusStr.startsWith('2')) return 'status success';
-    if (statusStr.startsWith('3')) return 'status redirect';
-    if (statusStr.startsWith('4')) return 'status client-error';
-    if (statusStr.startsWith('5')) return 'status server-error';
-    return 'status unknown';
-  };
+  const hasRawResponse = rawResponseText.trim().length > 0;
 
-  // Get status text description
-  const getStatusText = (statusStr) => {
-    const statusTexts = {
-      '200': 'OK',
-      '201': 'Created',
-      '301': 'Moved Permanently',
-      '302': 'Found',
-      '304': 'Not Modified',
-      '400': 'Bad Request',
-      '401': 'Unauthorized',
-      '403': 'Forbidden',
-      '404': 'Not Found',
-      '500': 'Internal Server Error',
-      '502': 'Bad Gateway',
-      '503': 'Service Unavailable'
-    };
-    return statusTexts[statusStr] || '';
-  };
-
-  // Render appropriate vulnerability badge
-  const renderVulnerabilityBadge = (vuln) => {
-    const severity = vuln.includes('high') ? 'high' : 
-                    vuln.includes('medium') ? 'medium' : 'low';
-    
-    return (
-      <span className={`vuln-badge ${severity}`}>
-        {severity}
-      </span>
-    );
-  };
-
-  // Get icon for node type
-  const getNodeTypeIcon = (type) => {
-    const icons = {
-      'domain': '🌐',
-      'subdomain': '🔗',
-      'directory': '📁',
-      'endpoint': '📄',
-      'file': '📄'
-    };
-    return icons[type] || '❓';
-  };
-
-  // Get background gradient based on node type
-  const getNodeBackground = () => {
-    const colors = {
-      'domain': 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.05))',
-      'subdomain': 'linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(33, 150, 243, 0.05))',
-      'directory': 'linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(156, 39, 176, 0.05))',
-      'endpoint': 'linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 152, 0, 0.05))'
-    };
-    return colors[node.type] || 'linear-gradient(135deg, rgba(66, 66, 66, 0.1), rgba(66, 66, 66, 0.05))';
-  };
+  // Tabs
+  const tabs = [
+    { key: 'headers', label: `HTTP Headers${headers.length ? ` (${headers.length})` : ''}` },
+    { key: 'tech', label: 'Technologies' },
+    { key: 'security', label: 'Security Findings' }
+  ];
 
   return (
-    <aside className="details-panel" style={{background: getNodeBackground()}}>
-      <div className="panel-header">
-        <div className="node-title">
-          <span className="node-icon">{getNodeTypeIcon(node.type)}</span>
-          <h2>{node.value || node.label || 'Node Details'}</h2>
+    <aside className="details-panel dp-panel" style={{ width: panelWidth }}>
+      <div
+        className="dp-resize-handle"
+        onMouseDown={beginResize}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize details panel"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') {
+            setPanelWidth(w => Math.min(Math.max(w + 20, minWidth), maxWidth));
+          } else if (e.key === 'ArrowRight') {
+            setPanelWidth(w => Math.min(Math.max(w - 20, minWidth), maxWidth));
+          } else if (e.key === 'Escape') {
+            resetWidth();
+          }
+        }}
+      />
+      <div className="dp-header-section">
+        <div className="dp-heading-line">
+          <span className="dp-heading-icon" aria-hidden>{iconForType(nodeType)}</span>
+          <span className="dp-heading-text">{nodeType === 'domain' ? 'Domain' : 'Node'}: {nodeId}</span>
+          <button type="button" className="dp-close" onClick={onClose} aria-label="Close details panel">×</button>
         </div>
-        
-        <div className="node-meta">
-          <span className="node-type-badge">{node.type}</span>
-          {node.protocol && <span className="protocol-badge">{node.protocol}</span>}
+        <div className="dp-status-line">
+          <span className={`dp-status-pill ${statusInfo.tone}`}>{statusInfo.code} {statusInfo.label}</span>
+          <span className="dp-status-meta">Response Size: {responseSize}</span>
+          <span className="dp-status-meta">Last Seen: {lastSeen}</span>
+          <button type="button" className="dp-reset-width" onClick={resetWidth} title="Reset width">Reset</button>
         </div>
-        
-        <button
-          className="close-button"
-          onClick={onClose}
-          title="Close"
-          aria-label="Close details panel"
-        >
-          ×
-        </button>
       </div>
 
-      <div className="panel-tabs">
-        <button 
-          className={`tab-button ${activeTab === 'info' ? 'active' : ''}`}
-          onClick={() => setActiveTab('info')}
-        >
-          <span className="tab-icon">ℹ️</span>
-          <span>Info</span>
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'tech' ? 'active' : ''}`}
-          onClick={() => setActiveTab('tech')}
-        >
-          <span className="tab-icon">⚙️</span>
-          <span>Tech</span>
-          {technologies.length > 0 && <span className="tab-badge">{technologies.length}</span>}
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'vuln' ? 'active' : ''}`}
-          onClick={() => setActiveTab('vuln')}
-          disabled={vulnerabilities.length === 0}
-        >
-          <span className="tab-icon">🔒</span>
-          <span>Security</span>
-          {vulnerabilities.length > 0 && <span className="tab-badge alert">{vulnerabilities.length}</span>}
-        </button>
+      <div className="dp-meta-cards">
+        <div className="dp-meta-card"><div className="dp-meta-label">🖥 Server</div><div className="dp-meta-value" title={server}>{server}</div></div>
+        <div className="dp-meta-card"><div className="dp-meta-label">🌍 IP Address</div><div className="dp-meta-value" title={ipAddress}>{ipAddress}</div></div>
+        <div className="dp-meta-card"><div className="dp-meta-label">⚡ Response Time</div><div className="dp-meta-value">{responseTime}</div></div>
+        <div className="dp-meta-card"><div className="dp-meta-label">🔌 Connections</div><div className="dp-meta-value">{totalConnections}</div></div>
       </div>
 
-      <div className="panel-content">
-        {activeTab === 'info' && (
-          <>
-            <div className="info-section status-section">
-              <div className="status-card">
-                <div className={getStatusClass(status)}>
-                  <span className="status-code">{status}</span>
-                  <span className="status-text">{getStatusText(status)}</span>
-                </div>
-              </div>
-              
-              <div className="metrics-grid">
-                <div className="metric-card">
-                  <div className="metric-icon">📦</div>
-                  <div className="metric-content">
-                    <span className="metric-value">{responseSize}</span>
-                    <span className="metric-label">Size</span>
-                  </div>
-                </div>
-                
-                <div className="metric-card">
-                  <div className="metric-icon">⏱️</div>
-                  <div className="metric-content">
-                    <span className="metric-value">{node.responseTime ? `${node.responseTime}ms` : 'N/A'}</span>
-                    <span className="metric-label">Response Time</span>
-                  </div>
-                </div>
-                
-                <div className="metric-card">
-                  <div className="metric-icon">🔄</div>
-                  <div className="metric-content">
-                    <span className="metric-value">{node.lastSeen || 'Unknown'}</span>
-                    <span className="metric-label">Last Seen</span>
-                  </div>
-                </div>
-                
-                <div className="metric-card">
-                  <div className="metric-icon">🔗</div>
-                  <div className="metric-content">
-                    <span className="metric-value">{(node.links?.length || 0) + (node.edges?.length || 0)}</span>
-                    <span className="metric-label">Connections</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+      <nav className="dp-tabs" role="tablist">
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={activeTab === t.key}
+            className={`dp-tab ${activeTab === t.key ? 'active' : ''}`}
+            onClick={() => setActiveTab(t.key)}
+          >{t.label}</button>
+        ))}
+      </nav>
 
-            {urls.length > 0 && (
-              <div className="info-section">
-                <div className="section-header">
-                  <h3>
-                    <span className="section-icon">🔗</span>
-                    URLs
-                    <span className="count-badge">{urls.length}</span>
-                  </h3>
-                </div>
-                <div className="urls-container">
-                  {urls.map((url, i) => (
-                    <div key={i} className="url-card">
-                      <div className="url-icon">🌐</div>
-                      <div className="url-content">
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="url-link">
-                          {url}
-                        </a>
-                        <div className="url-actions">
-                          <button className="url-action-btn" title="Copy URL">📋</button>
-                          <button className="url-action-btn" title="Open in new tab">↗️</button>
-                        </div>
-                      </div>
+      <div className="dp-tab-content">
+        {/* Overview tab removed per user request */}
+
+        {activeTab === 'headers' && (
+          <div className="dp-headers-tab">
+            {headers.length ? (
+              <div className="dp-header-list">
+                {headers.map(({ key, value }) => {
+                  const headerKey = key || 'Unnamed header';
+                  const headerValue = value || '—';
+                  return (
+                    <div className="dp-header-item" key={`${headerKey}-${headerValue}`}>
+                      <div className="dp-header-top"><span className="dp-header-name" title={headerKey}>{headerKey}</span></div>
+                      <span className="dp-header-value" title={headerValue}>{headerValue}</span>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
+            ) : <div className="dp-empty">No headers detected</div>}
+            {hasRawResponse && showFullResponse && <pre className="dp-response-body" aria-label="HTTP response dump">{rawResponseText}</pre>}
+            {hasRawResponse && (
+              <button type="button" className="dp-ghost-button dp-response-toggle" onClick={() => setShowFullResponse(p=>!p)} aria-expanded={showFullResponse}>{showFullResponse ? 'Hide raw' : 'Show raw'}</button>
             )}
-
-            {headers.length > 0 ? (
-              <div className="info-section">
-                <div className="section-header">
-                  <h3>
-                    <span className="section-icon">📋</span>
-                    Headers 
-                    <span className="count-badge">{headers.length}</span>
-                  </h3>
-                  {headers.length > 5 && (
-                    <button className="section-action">
-                      Show All
-                    </button>
-                  )}
-                </div>
-                
-                <div className="accordion">
-                  <div className="headers-list">
-                    {headers.map((h, i) => (
-                      <div key={i} className="header-item">
-                        <span className="header-key">{h.key}</span>
-                        <span className="header-value">{h.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                {headers.some(h => h.key.toLowerCase().includes('security') || 
-                              h.key.toLowerCase().includes('content-security') ||
-                              h.key.toLowerCase().includes('x-xss')) && (
-                  <div className="security-hint">
-                    <span className="hint-icon">🛡️</span>
-                    Security headers detected
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="info-section">
-                <h3>
-                  <span className="section-icon">📋</span>
-                  Headers
-                </h3>
-                <div className="empty-state">
-                  <span className="empty-icon">📭</span>
-                  <span>No headers information available</span>
-                </div>
-              </div>
-            )}
-          </>
+          </div>
         )}
 
         {activeTab === 'tech' && (
-          <>
-            <div className="info-section">
-              <div className="section-header">
-                <h3>
-                  <span className="section-icon">⚙️</span>
-                  Technologies 
-                  <span className="count-badge">{technologies.length}</span>
-                </h3>
-              </div>
-              {technologies.length > 0 ? (
-                <div className="tech-grid">
-                  {technologies.map((tech, i) => {
-                    // Determine tech category
-                    const category = 
-                      tech.includes('Server') || tech.includes('Apache') || tech.includes('Nginx') ? 'server' :
-                      tech.includes('React') || tech.includes('Vue') || tech.includes('Angular') ? 'frontend' :
-                      tech.includes('PHP') || tech.includes('Node') || tech.includes('Python') ? 'backend' :
-                      tech.includes('MySQL') || tech.includes('Postgres') || tech.includes('MongoDB') ? 'database' :
-                      'other';
-                    
-                    const categoryIcons = {
-                      'server': '🖥️',
-                      'frontend': '🖌️',
-                      'backend': '⚙️',
-                      'database': '🗄️',
-                      'other': '🧰'
-                    };
-                    
-                    return (
-                      <div key={i} className={`tech-card ${category}`}>
-                        <div className="tech-icon">{categoryIcons[category]}</div>
-                        <div className="tech-content">
-                          <span className="tech-name">{tech}</span>
-                          <span className="tech-category">{category}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <span className="empty-icon">🔍</span>
-                  <span>No technologies detected</span>
-                </div>
-              )}
-            </div>
-            
-            <div className="info-section">
-              <div className="section-header">
-                <h3>
-                  <span className="section-icon">📊</span>
-                  Technology Summary
-                </h3>
-              </div>
-              <div className="tech-summary">
-                {technologies.length > 0 ? (
-                  <div className="tech-chart">
-                    <div className="chart-legend">
-                      <div className="legend-item">
-                        <span className="legend-color frontend"></span>
-                        <span className="legend-label">Frontend</span>
-                      </div>
-                      <div className="legend-item">
-                        <span className="legend-color backend"></span>
-                        <span className="legend-label">Backend</span>
-                      </div>
-                      <div className="legend-item">
-                        <span className="legend-color server"></span>
-                        <span className="legend-label">Server</span>
-                      </div>
-                    </div>
-                    <div className="tech-risk-assessment">
-                      <div className="risk-header">Security Risk Assessment</div>
-                      <div className="risk-level low">Low Risk</div>
-                      <div className="risk-description">Current tech stack appears to be maintained and updated.</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="empty-state">No data available for technology summary</div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        {activeTab === 'vuln' && (
-          <>
-            <div className="info-section">
-              <div className="section-header security-header">
-                <h3>
-                  <span className="section-icon">🛡️</span>
-                  Security Issues
-                  <span className={`count-badge ${vulnerabilities.length > 0 ? 'warning' : 'safe'}`}>
-                    {vulnerabilities.length}
-                  </span>
-                </h3>
-                <div className="security-actions">
-                  <button className="action-button" title="Export report">
-                    <span>📊</span>
-                  </button>
-                </div>
-              </div>
-              
-              {vulnerabilities.length > 0 ? (
-                <div className="vuln-list">
-                  {vulnerabilities.map((vuln, i) => {
-                    // Determine vulnerability type
-                    const vulnType = 
-                      vuln.includes('XSS') ? 'xss' :
-                      vuln.includes('SQL') ? 'sql' :
-                      vuln.includes('CSRF') ? 'csrf' :
-                      vuln.includes('auth') || vuln.includes('password') ? 'auth' :
-                      'other';
-                    
-                    return (
-                      <div key={i} className={`vuln-item ${vulnType}`}>
-                        <div className="vuln-severity">
-                          {renderVulnerabilityBadge(vuln)}
-                          <div className="vuln-icon">
-                            {vulnType === 'xss' ? '📝' :
-                             vulnType === 'sql' ? '🗃️' :
-                             vulnType === 'csrf' ? '🔄' :
-                             vulnType === 'auth' ? '🔑' : '⚠️'}
-                          </div>
-                        </div>
-                        <div className="vuln-details">
-                          <div className="vuln-title">{vuln}</div>
-                          <div className="vuln-description">
-                            {vulnType === 'xss' ? 'Possible cross-site scripting vulnerability' :
-                             vulnType === 'sql' ? 'Potential SQL injection point' :
-                             vulnType === 'csrf' ? 'Cross-site request forgery risk' :
-                             vulnType === 'auth' ? 'Authentication vulnerability detected' : 
-                             'Security issue detected'}
-                          </div>
-                          <div className="vuln-actions">
-                            <button className="vuln-action-btn">Details</button>
-                            <button className="vuln-action-btn">Fix</button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="security-success">
-                  <div className="success-icon">✅</div>
-                  <div className="success-message">No vulnerabilities detected</div>
-                  <div className="success-detail">This node appears to be secure based on current scans</div>
-                </div>
-              )}
-            </div>
-            
-            <div className="info-section">
-              <div className="section-header">
-                <h3>
-                  <span className="section-icon">🔍</span>
-                  Security Scan History
-                </h3>
-              </div>
-              <div className="scan-history">
-                <div className="scan-timeline">
-                  <div className="scan-item">
-                    <div className="scan-date">{new Date().toLocaleDateString()}</div>
-                    <div className="scan-result clean">Clean</div>
-                    <div className="scan-detail">Full security scan</div>
-                  </div>
-                  <div className="scan-item">
-                    <div className="scan-date">{new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}</div>
-                    <div className="scan-result clean">Clean</div>
-                    <div className="scan-detail">Vulnerability assessment</div>
-                  </div>
-                </div>
-                <button className="scan-action">Run New Scan</button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="panel-footer">
-        <div className="footer-controls">
-          <label className="control-toggle">
-            <input 
-              type="checkbox"
-              checked={isPanEnabled}
-              onChange={(e) => setIsPanEnabled(e.target.checked)}
-            />
-            <span className="toggle-label">
-              <span className="toggle-icon">🔍</span>
-              Enable zoom & pan
-            </span>
-          </label>
-          
-          <div className="panel-actions">
-            <button className="panel-action-btn" title="Export data">
-              <span className="action-icon">📤</span>
-            </button>
-            <button className="panel-action-btn" title="Add to favorites">
-              <span className="action-icon">⭐</span>
-            </button>
-            <button className="panel-action-btn" title="Copy node info">
-              <span className="action-icon">📋</span>
-            </button>
+          <div className="dp-tech-tab">
+            {technologies.length ? <ul className="dp-chip-list">{technologies.map(t => <li key={t}>{t}</li>)}</ul> : <div className="dp-empty">No technologies identified</div>}
           </div>
-        </div>
-        
-        <div className="footer-info">
-          <div className="node-id">ID: {node.id || 'unknown'}</div>
-          <div className="panel-version">v2.3</div>
-        </div>
+        )}
+
+        {activeTab === 'security' && (
+          <div className="dp-security-tab">
+            {vulnerabilities.length ? <ul className="dp-list">{vulnerabilities.map((v,i)=><li key={i}>{v}</li>)}</ul> : <div className="dp-empty">No known vulnerabilities</div>}
+          </div>
+        )}
       </div>
     </aside>
   );

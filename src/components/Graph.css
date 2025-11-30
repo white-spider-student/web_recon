@@ -2,10 +2,11 @@
   position: absolute;
   top: 14px;
   left: 14px;
-  z-index: 1200;
+  z-index: 10; /* Above graph canvas but below detail panel */
   display: flex;
   gap: 8px;
   align-items: center;
+  pointer-events: auto;
 }
 
 .graph-toolbar .panel {
