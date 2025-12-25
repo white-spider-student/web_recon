@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.80 scan initiated Thu Dec 25 20:14:29 2025 as: nmap -sV -Pn -&#45;open -p 80,443,8080,8443 -&#45;script=http-server-header,http-title,http-headers,http-methods,http-auth,ssl-cert -&#45;script-args=http.useragent=&apos;Mozilla/5.0&apos; -T4 -&#45;max-retries 2 -&#45;host-timeout 300s -oX /home/mohammed/Desktop/test/web_recon/results/nmap_http_philadelphia.edu.jo_20251225-201428.xml philadelphia.edu.jo -->
+<nmaprun scanner="nmap" args="nmap -sV -Pn -&#45;open -p 80,443,8080,8443 -&#45;script=http-server-header,http-title,http-headers,http-methods,http-auth,ssl-cert -&#45;script-args=http.useragent=&apos;Mozilla/5.0&apos; -T4 -&#45;max-retries 2 -&#45;host-timeout 300s -oX /home/mohammed/Desktop/test/web_recon/results/nmap_http_philadelphia.edu.jo_20251225-201428.xml philadelphia.edu.jo" start="1766682869" startstr="Thu Dec 25 20:14:29 2025" version="7.80" xmloutputversion="1.04">
+<scaninfo type="connect" protocol="tcp" numservices="4" services="80,443,8080,8443"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1766682898" endtime="1766683037"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="91.106.110.248" addrtype="ipv4"/>
+<hostnames>
+<hostname name="philadelphia.edu.jo" type="user"/>
+</hostnames>
+<ports><extraports state="closed" count="2">
+<extrareasons reason="conn-refused" count="2"/>
+</extraports>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="http-proxy" product="F5 BIG-IP load balancer http proxy" devicetype="load balancer" method="probed" conf="10"/><script id="http-headers" output="&#xa;  Location: https://philadelphia.edu.jo/&#xa;  Server: BigIP&#xa;  Connection: close&#xa;  Content-Length: 0&#xa;  &#xa;  (Request type: GET)&#xa;"/><script id="http-methods" output="&#xa;  Supported Methods: GET HEAD POST OPTIONS"><table key="Supported Methods">
+<elem>GET</elem>
+<elem>HEAD</elem>
+<elem>POST</elem>
+<elem>OPTIONS</elem>
+</table>
+</script><script id="http-server-header" output="BigIP"><elem>BigIP</elem>
+</script><script id="http-title" output="Did not follow redirect to https://philadelphia.edu.jo/"><elem key="redirect_url">https://philadelphia.edu.jo/</elem>
+</script><script id="https-redirect" output="ERROR: Script execution failed (use -d to debug)"/></port>
+<port protocol="tcp" portid="443"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="https" servicefp="SF-Port443-TCP:V=7.80%T=SSL%I=7%D=12/25%Time=694D711F%P=x86_64-pc-linux-gnu%r(HTTPOptions,1E4,&quot;HTTP/1\.1\x20200\x20OK\r\nX-Frame-Options:\x20SAMEORIGIN\r\nX-XSS-Protection:\x201;\x20mode=block\r\nX-Content-Type-Options:\x20nosniff\r\nCache-Control:\x20no-cache\r\nConnection:\x20close\r\nContent-Type:\x20text/html;\x20charset=utf-8\r\nPragma:\x20no-cache\r\nContent-Length:\x20247\r\n\r\n&lt;html&gt;&lt;head&gt;&lt;title&gt;Request\x20Rejected&lt;/title&gt;&lt;/head&gt;&lt;body&gt;The\x20requested\x20URL\x20was\x20rejected\.\x20Please\x20consult\x20with\x20your\x20administrator\.&lt;br&gt;&lt;br&gt;Your\x20support\x20ID\x20is:\x2010705822895019543129&lt;br&gt;&lt;br&gt;&lt;a\x20href=&apos;javascript:history\.back\(\);&apos;&gt;\[Go\x20Back\]&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&quot;)%r(FourOhFourRequest,1E4,&quot;HTTP/1\.1\x20200\x20OK\r\nX-Frame-Options:\x20SAMEORIGIN\r\nX-XSS-Protection:\x201;\x20mode=block\r\nX-Content-Type-Options:\x20nosniff\r\nCache-Control:\x20no-cache\r\nConnection:\x20close\r\nContent-Type:\x20text/html;\x20charset=utf-8\r\nPragma:\x20no-cache\r\nContent-Length:\x20247\r\n\r\n&lt;html&gt;&lt;head&gt;&lt;title&gt;Request\x20Rejected&lt;/title&gt;&lt;/head&gt;&lt;body&gt;The\x20requested\x20URL\x20was\x20rejected\.\x20Please\x20consult\x20with\x20your\x20administrator\.&lt;br&gt;&lt;br&gt;Your\x20support\x20ID\x20is:\x2010705822895020843211&lt;br&gt;&lt;br&gt;&lt;a\x20href=&apos;javascript:history\.back\(\);&apos;&gt;\[Go\x20Back\]&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&quot;);" tunnel="ssl" method="probed" conf="10"/><script id="fingerprint-strings" output="&#xa;  FourOhFourRequest: &#xa;    HTTP/1.1 200 OK&#xa;    X-Frame-Options: SAMEORIGIN&#xa;    X-XSS-Protection: 1; mode=block&#xa;    X-Content-Type-Options: nosniff&#xa;    Cache-Control: no-cache&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Pragma: no-cache&#xa;    Content-Length: 247&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;Request Rejected&lt;/title&gt;&lt;/head&gt;&lt;body&gt;The requested URL was rejected. Please consult with your administrator.&lt;br&gt;&lt;br&gt;Your support ID is: 10705822895020843211&lt;br&gt;&lt;br&gt;&lt;a href=&apos;javascript:history.back();&apos;&gt;[Go Back]&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&#xa;  HTTPOptions: &#xa;    HTTP/1.1 200 OK&#xa;    X-Frame-Options: SAMEORIGIN&#xa;    X-XSS-Protection: 1; mode=block&#xa;    X-Content-Type-Options: nosniff&#xa;    Cache-Control: no-cache&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Pragma: no-cache&#xa;    Content-Length: 247&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;Request Rejected&lt;/title&gt;&lt;/head&gt;&lt;body&gt;The requested URL was rejected. Please consult with your administrator.&lt;br&gt;&lt;br&gt;Your support ID is: 10705822895019543129&lt;br&gt;&lt;br&gt;&lt;a href=&apos;javascript:history.back();&apos;&gt;[Go Back]&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;"><elem key="FourOhFourRequest">&#xa;    HTTP/1.1 200 OK&#xa;    X-Frame-Options: SAMEORIGIN&#xa;    X-XSS-Protection: 1; mode=block&#xa;    X-Content-Type-Options: nosniff&#xa;    Cache-Control: no-cache&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Pragma: no-cache&#xa;    Content-Length: 247&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;Request Rejected&lt;/title&gt;&lt;/head&gt;&lt;body&gt;The requested URL was rejected. Please consult with your administrator.&lt;br&gt;&lt;br&gt;Your support ID is: 10705822895020843211&lt;br&gt;&lt;br&gt;&lt;a href=&apos;javascript:history.back();&apos;&gt;[Go Back]&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;</elem>
+<elem key="HTTPOptions">&#xa;    HTTP/1.1 200 OK&#xa;    X-Frame-Options: SAMEORIGIN&#xa;    X-XSS-Protection: 1; mode=block&#xa;    X-Content-Type-Options: nosniff&#xa;    Cache-Control: no-cache&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Pragma: no-cache&#xa;    Content-Length: 247&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;Request Rejected&lt;/title&gt;&lt;/head&gt;&lt;body&gt;The requested URL was rejected. Please consult with your administrator.&lt;br&gt;&lt;br&gt;Your support ID is: 10705822895019543129&lt;br&gt;&lt;br&gt;&lt;a href=&apos;javascript:history.back();&apos;&gt;[Go Back]&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;</elem>
+</script><script id="http-headers" output="&#xa;  Date: Thu, 25 Dec 2025 17:17:14 GMT&#xa;  P3P: CP=&quot;NOI ADM DEV PSAi COM NAV OUR OTRo STP IND DEM&quot;&#xa;  Expires: Wed, 17 Aug 2005 00:00:00 GMT&#xa;  Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0&#xa;  Pragma: no-cache&#xa;  Set-Cookie: ba1bbdcc9006abb1219f9736c55c3a59=64576c213144ce68d7b4fbf576a7acf4; path=/; secure; HttpOnly&#xa;  X-Content-Type-Options: nosniff&#xa;  Last-Modified: Thu, 25 Dec 2025 17:17:14 GMT&#xa;  Cache-Control: private, must-revalidate&#xa;  Connection: close&#xa;  Content-Type: text/html; charset=utf-8&#xa;  Strict-Transport-Security: max-age=16070400; includeSubDomains; preload&#xa;  Set-Cookie: TS013867ee=01c9d2e4ae616086c6e5f21db425ca38b5c97a631e23f6a4b17d46a739cb182be9c759721aae9efb3ad7fa7c36f9a73c5e813bca80921fe8aafe2f1ff7836cfae6ea66bde3; Path=/; Domain=.philadelphia.edu.jo; Secure; HttpOnly&#xa;  Transfer-Encoding: chunked&#xa;  &#xa;  (Request type: HEAD)&#xa;"/><script id="http-methods" output="&#xa;  Supported Methods: POST OPTIONS"><table key="Supported Methods">
+<elem>POST</elem>
+<elem>OPTIONS</elem>
+</table>
+</script><script id="http-title" output="Philadelphia University in Jordan"><elem key="title">Philadelphia University in Jordan</elem>
+</script><script id="ssl-cert" output="Subject: commonName=*.philadelphia.edu.jo&#xa;Subject Alternative Name: DNS:*.philadelphia.edu.jo, DNS:philadelphia.edu.jo&#xa;Issuer: commonName=Sectigo RSA Domain Validation Secure Server CA/organizationName=Sectigo Limited/stateOrProvinceName=Greater Manchester/countryName=GB&#xa;Public Key type: rsa&#xa;Public Key bits: 2048&#xa;Signature Algorithm: sha256WithRSAEncryption&#xa;Not valid before: 2025-03-01T00:00:00&#xa;Not valid after:  2026-03-01T23:59:59&#xa;MD5:   c038 bd90 f0a8 6157 b224 ea0e f0a3 68da&#xa;SHA-1: fee2 909d 28b6 78a0 604f 4ba4 7f34 c580 b151 ac22"><table key="subject">
+<elem key="commonName">*.philadelphia.edu.jo</elem>
+</table>
+<table key="issuer">
+<elem key="localityName">Salford</elem>
+<elem key="organizationName">Sectigo Limited</elem>
+<elem key="commonName">Sectigo RSA Domain Validation Secure Server CA</elem>
+<elem key="stateOrProvinceName">Greater Manchester</elem>
+<elem key="countryName">GB</elem>
+</table>
+<table key="pubkey">
+<elem key="modulus">BIGNUM: 0x623107369cd8</elem>
+<elem key="type">rsa</elem>
+<elem key="exponent">BIGNUM: 0x623107369c98</elem>
+<elem key="bits">2048</elem>
+</table>
+<table key="extensions">
+<table>
+<elem key="value">8D:8C:5E:C4:54:AD:8A:E1:77:E9:9B:F9:9B:05:E1:B8:01:8D:61:E1</elem>
+<elem key="name">X509v3 Authority Key Identifier</elem>
+</table>
+<table>
+<elem key="value">AF:43:59:7B:FE:37:A9:4A:15:3B:4C:B3:77:93:11:58:E2:0D:5F:DC</elem>
+<elem key="name">X509v3 Subject Key Identifier</elem>
+</table>
+<table>
+<elem key="critical">true</elem>
+<elem key="value">Digital Signature, Key Encipherment</elem>
+<elem key="name">X509v3 Key Usage</elem>
+</table>
+<table>
+<elem key="critical">true</elem>
+<elem key="value">CA:FALSE</elem>
+<elem key="name">X509v3 Basic Constraints</elem>
+</table>
+<table>
+<elem key="value">TLS Web Server Authentication, TLS Web Client Authentication</elem>
+<elem key="name">X509v3 Extended Key Usage</elem>
+</table>
+<table>
+<elem key="value">Policy: 1.3.6.1.4.1.6449.1.2.2.7&#xa;  CPS: https://sectigo.com/CPS&#xa;Policy: 2.23.140.1.2.1</elem>
+<elem key="name">X509v3 Certificate Policies</elem>
+</table>
+<table>
+<elem key="value">CA Issuers - URI:http://crt.sectigo.com/SectigoRSADomainValidationSecureServerCA.crt&#xa;OCSP - URI:http://ocsp.sectigo.com</elem>
+<elem key="name">Authority Information Access</elem>
+</table>
+<table>
+<elem key="value">DNS:*.philadelphia.edu.jo, DNS:philadelphia.edu.jo</elem>
+<elem key="name">X509v3 Subject Alternative Name</elem>
+</table>
+<table>
+<elem key="value">Signed Certificate Timestamp:&#xa;    Version   : v1 (0x0)&#xa;    Log ID    : 96:97:64:BF:55:58:97:AD:F7:43:87:68:37:08:42:77:&#xa;                E9:F0:3A:D5:F6:A4:F3:36:6E:46:A4:3F:0F:CA:A9:C6&#xa;    Timestamp : Mar  1 08:24:39.359 2025 GMT&#xa;    Extensions: none&#xa;    Signature : ecdsa-with-SHA256&#xa;                30:46:02:21:00:8A:E5:FA:D6:3C:9B:A6:77:17:60:32:&#xa;                DF:51:01:18:6D:F8:18:5D:28:83:96:C2:42:01:57:42:&#xa;                A1:D7:10:A8:8A:02:21:00:DA:B5:A4:DC:AE:F6:1B:EC:&#xa;                13:66:AF:9E:40:C1:C0:7A:3B:35:F5:A5:D4:B4:9C:96:&#xa;                05:90:E0:4C:48:AA:44:72&#xa;Signed Certificate Timestamp:&#xa;    Version   : v1 (0x0)&#xa;    Log ID    : 19:86:D4:C7:28:AA:6F:FE:BA:03:6F:78:2A:4D:01:91:&#xa;                AA:CE:2D:72:31:0F:AE:CE:5D:70:41:2D:25:4C:C7:D4&#xa;    Timestamp : Mar  1 08:24:39.251 2025 GMT&#xa;    Extensions: none&#xa;    Signature : ecdsa-with-SHA256&#xa;                30:46:02:21:00:F1:CD:8A:EB:22:95:BD:EE:A7:03:C2:&#xa;                C6:77:10:CE:35:54:E2:B2:D2:4A:DC:96:27:1F:7F:75:&#xa;                72:73:75:FE:34:02:21:00:D7:D2:4F:9E:A9:6A:55:07:&#xa;                9B:B4:C6:0E:DF:00:B9:3E:8E:C1:B8:6E:FF:DD:6B:AD:&#xa;                6D:A2:D0:AA:FB:A4:BB:E5&#xa;Signed Certificate Timestamp:&#xa;    Version   : v1 (0x0)&#xa;    Log ID    : CB:38:F7:15:89:7C:84:A1:44:5F:5B:C1:DD:FB:C9:6E:&#xa;                F2:9A:59:CD:47:0A:69:05:85:B0:CB:14:C3:14:58:E7&#xa;    Timestamp : Mar  1 08:24:39.365 2025 GMT&#xa;    Extensions: none&#xa;    Signature : ecdsa-with-SHA256&#xa;                30:45:02:21:00:8B:AB:6D:12:C0:66:DB:5E:61:F9:B8:&#xa;                DF:A1:1C:8C:B0:8E:C3:36:E0:41:74:BE:67:D8:E0:3B:&#xa;                23:2B:CF:E7:CE:02:20:22:92:94:CF:0E:6E:7E:7E:40:&#xa;                06:1F:54:2D:66:1E:0E:9A:D1:B6:68:7C:0F:57:43:9F:&#xa;                2A:C2:13:EA:15:59:C8</elem>
+<elem key="name">CT Precertificate SCTs</elem>
+</table>
+</table>
+<elem key="sig_algo">sha256WithRSAEncryption</elem>
+<table key="validity">
+<elem key="notBefore">2025-03-01T00:00:00</elem>
+<elem key="notAfter">2026-03-01T23:59:59</elem>
+</table>
+<elem key="md5">c038bd90f0a86157b224ea0ef0a368da</elem>
+<elem key="sha1">fee2909d28b678a0604f4ba47f34c580b151ac22</elem>
+<elem key="pem">-&#45;&#45;&#45;&#45;BEGIN CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;MIIGSjCCBTKgAwIBAgIQZYU/j0KGiS2C0cfqAheuUDANBgkqhkiG9w0BAQsFADCB&#xa;jzELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4G&#xa;A1UEBxMHU2FsZm9yZDEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQD&#xa;Ey5TZWN0aWdvIFJTQSBEb21haW4gVmFsaWRhdGlvbiBTZWN1cmUgU2VydmVyIENB&#xa;MB4XDTI1MDMwMTAwMDAwMFoXDTI2MDMwMTIzNTk1OVowIDEeMBwGA1UEAwwVKi5w&#xa;aGlsYWRlbHBoaWEuZWR1LmpvMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC&#xa;AQEA35gXQ9XLz3qPvtfkunNMCH+L727d4O9Y9r+2aNXaUHgm8EfzFirg+BaOtAAK&#xa;2GZlAeR/pN52Mine3oLahv8onai7QI21qck+BLje7zEGVJNMfVW7/OvgJ0xKHvYF&#xa;HFfezYVDmwYon48kYVH9jXVi8Plq1zmvNYFYip0DbgEzZe2b/TWXYR1mf/kxNQdf&#xa;XU2F7zpL+jKm7mhVkcOZSXGCLi8LgMsZxiDVPZbSAzGomNFQmR03ErbdMkbDk4bG&#xa;P51FZ3Tn2udcNFkgey9aSjbsBSGsx4OIx0ow/e6goCoUMy3KDAWU0C/zCCSe+pT3&#xa;Pm9vjDqxMxfQGV176waN/cyXIQIDAQABo4IDDjCCAwowHwYDVR0jBBgwFoAUjYxe&#xa;xFStiuF36Zv5mwXhuAGNYeEwHQYDVR0OBBYEFK9DWXv+N6lKFTtMs3eTEVjiDV/c&#xa;MA4GA1UdDwEB/wQEAwIFoDAMBgNVHRMBAf8EAjAAMB0GA1UdJQQWMBQGCCsGAQUF&#xa;BwMBBggrBgEFBQcDAjBJBgNVHSAEQjBAMDQGCysGAQQBsjEBAgIHMCUwIwYIKwYB&#xa;BQUHAgEWF2h0dHBzOi8vc2VjdGlnby5jb20vQ1BTMAgGBmeBDAECATCBhAYIKwYB&#xa;BQUHAQEEeDB2ME8GCCsGAQUFBzAChkNodHRwOi8vY3J0LnNlY3RpZ28uY29tL1Nl&#xa;Y3RpZ29SU0FEb21haW5WYWxpZGF0aW9uU2VjdXJlU2VydmVyQ0EuY3J0MCMGCCsG&#xa;AQUFBzABhhdodHRwOi8vb2NzcC5zZWN0aWdvLmNvbTA1BgNVHREELjAsghUqLnBo&#xa;aWxhZGVscGhpYS5lZHUuam+CE3BoaWxhZGVscGhpYS5lZHUuam8wggGABgorBgEE&#xa;AdZ5AgQCBIIBcASCAWwBagB3AJaXZL9VWJet90OHaDcIQnfp8DrV9qTzNm5GpD8P&#xa;yqnGAAABlVDOtr8AAAQDAEgwRgIhAIrl+tY8m6Z3F2Ay31EBGG34GF0og5bCQgFX&#xa;QqHXEKiKAiEA2rWk3K72G+wTZq+eQMHAejs19aXUtJyWBZDgTEiqRHIAdwAZhtTH&#xa;KKpv/roDb3gqTQGRqs4tcjEPrs5dcEEtJUzH1AAAAZVQzrZTAAAEAwBIMEYCIQDx&#xa;zYrrIpW97qcDwsZ3EM41VOKy0krclicff3Vyc3X+NAIhANfST56palUHm7TGDt8A&#xa;uT6Owbhu/91rrW2i0Kr7pLvlAHYAyzj3FYl8hKFEX1vB3fvJbvKaWc1HCmkFhbDL&#xa;FMMUWOcAAAGVUM62xQAABAMARzBFAiEAi6ttEsBm215h+bjfoRyMsI7DNuBBdL5n&#xa;2OA7IyvP584CICKSlM8Obn5+QAYfVC1mHg6a0bZofA9XQ58qwhPqFVnIMA0GCSqG&#xa;SIb3DQEBCwUAA4IBAQBeTQO2Ja/LocsH36VXj6Z02Fbl4g8Lxwit4NQbqKeYPrOU&#xa;jEUSzijDX0c5k7Ck1nEeo/sgwtfG2wBq6JexE5ZcSzgv/oiiwlk6h0Cm3trgNpzH&#xa;gmOg1wOft0u8ld/RBsTOcCk5y3FOixL2j1cymM1HxCy14CvYLX9jTyVIlRXrfFBg&#xa;/Rwy3w894ZC2paG5jH0gb8NcDrl9VFGQpqRGNGhErZVskSg2yg/si3toPtEi0CeR&#xa;4Qp5Mr/+iZFYirSHzHrOJtG9BxHpmCJ2lDioRdtG8cmGnKvAJVzjbCL3DfEhkUCf&#xa;wX9+XruZ6dinjMaV6fga8a0O6+JqsngzTNiTtwxy&#xa;-&#45;&#45;&#45;&#45;END CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;</elem>
+</script></port>
+</ports>
+<times srtt="7804" rttvar="3375" to="100000"/>
+</host>
+<runstats><finished time="1766683037" timestr="Thu Dec 25 20:17:17 2025" elapsed="168.58" summary="Nmap done at Thu Dec 25 20:17:17 2025; 1 IP address (1 host up) scanned in 168.58 seconds" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

@@ -7,6 +7,7 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
   const containerRef = useRef(null);
   const fgRef = useRef(null);
   const [size, setSize] = useState({ width: 800, height: 520 });
+  const didAutoFitRef = useRef(false);
   const nodesAddedAt = useRef(new Map());
 
   // Build lookup sets for highlights
@@ -69,6 +70,16 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
     // Pin root node
     rootNode.fx = size.width / 2;
     rootNode.fy = size.height / 2;
+
+    if (!didAutoFitRef.current) {
+      const timeout = setTimeout(() => {
+        if (fg.zoomToFit) {
+          fg.zoomToFit(800, 100);
+          didAutoFitRef.current = true;
+        }
+      }, 300);
+      return () => clearTimeout(timeout);
+    }
   }, [data, size.width, size.height]);
 
   // Zoom controls
@@ -86,18 +97,18 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
         fg.zoom(currentZoom / 1.5, 400);
         break;
       case 'home':
-        fg.zoomToFit(200, 1000);
+        fg.zoomToFit(400, 50);
         break;
       default:
         break;
     }
   };
 
-  // Handle node clicks - zoom to clicked node
+  // Handle node clicks
   const handleNodeClick = (node) => {
     if (!node || !fgRef.current?.centerAt) return;
-    fgRef.current.centerAt(node.x, node.y, 600);
-    fgRef.current.zoom(2.0, 600);
+    fgRef.current.centerAt(node.x, node.y, 400);
+    fgRef.current.zoom(1.6, 400);
     onNodeClick?.(node, [node.id]);
   };
 

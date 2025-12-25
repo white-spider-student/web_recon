@@ -1,0 +1,50 @@
+{
+  "scan_info": {
+    "start_time": "1766682869",
+    "args": "nmap -sV -Pn --open -p 80,443,8080,8443 --script=http-server-header,http-title,http-headers,http-methods,http-auth,ssl-cert --script-args=http.useragent='Mozilla/5.0' -T4 --max-retries 2 --host-timeout 300s -oX /home/mohammed/Desktop/test/web_recon/results/nmap_http_philadelphia.edu.jo_20251225-201428.xml philadelphia.edu.jo",
+    "version": "7.80"
+  },
+  "hosts": [
+    {
+      "address": "91.106.110.248",
+      "ports": [
+        {
+          "number": "80",
+          "protocol": "tcp",
+          "state": "open",
+          "service": {
+            "name": "http-proxy",
+            "product": "F5 BIG-IP load balancer http proxy",
+            "version": "",
+            "extrainfo": ""
+          },
+          "scripts": {
+            "http-headers": "\n  Location: https://philadelphia.edu.jo/\n  Server: BigIP\n  Connection: close\n  Content-Length: 0\n  \n  (Request type: GET)\n",
+            "http-methods": "\n  Supported Methods: GET HEAD POST OPTIONS",
+            "http-server-header": "BigIP",
+            "http-title": "Did not follow redirect to https://philadelphia.edu.jo/",
+            "https-redirect": "ERROR: Script execution failed (use -d to debug)"
+          }
+        },
+        {
+          "number": "443",
+          "protocol": "tcp",
+          "state": "open",
+          "service": {
+            "name": "https",
+            "product": "",
+            "version": "",
+            "extrainfo": ""
+          },
+          "scripts": {
+            "fingerprint-strings": "\n  FourOhFourRequest: \n    HTTP/1.1 200 OK\n    X-Frame-Options: SAMEORIGIN\n    X-XSS-Protection: 1; mode=block\n    X-Content-Type-Options: nosniff\n    Cache-Control: no-cache\n    Connection: close\n    Content-Type: text/html; charset=utf-8\n    Pragma: no-cache\n    Content-Length: 247\n    <html><head><title>Request Rejected</title></head><body>The requested URL was rejected. Please consult with your administrator.<br><br>Your support ID is: 10705822895020843211<br><br><a href='javascript:history.back();'>[Go Back]</a></body></html>\n  HTTPOptions: \n    HTTP/1.1 200 OK\n    X-Frame-Options: SAMEORIGIN\n    X-XSS-Protection: 1; mode=block\n    X-Content-Type-Options: nosniff\n    Cache-Control: no-cache\n    Connection: close\n    Content-Type: text/html; charset=utf-8\n    Pragma: no-cache\n    Content-Length: 247\n    <html><head><title>Request Rejected</title></head><body>The requested URL was rejected. Please consult with your administrator.<br><br>Your support ID is: 10705822895019543129<br><br><a href='javascript:history.back();'>[Go Back]</a></body></html>",
+            "http-headers": "\n  Date: Thu, 25 Dec 2025 17:17:14 GMT\n  P3P: CP=\"NOI ADM DEV PSAi COM NAV OUR OTRo STP IND DEM\"\n  Expires: Wed, 17 Aug 2005 00:00:00 GMT\n  Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0\n  Pragma: no-cache\n  Set-Cookie: ba1bbdcc9006abb1219f9736c55c3a59=64576c213144ce68d7b4fbf576a7acf4; path=/; secure; HttpOnly\n  X-Content-Type-Options: nosniff\n  Last-Modified: Thu, 25 Dec 2025 17:17:14 GMT\n  Cache-Control: private, must-revalidate\n  Connection: close\n  Content-Type: text/html; charset=utf-8\n  Strict-Transport-Security: max-age=16070400; includeSubDomains; preload\n  Set-Cookie: TS013867ee=01c9d2e4ae616086c6e5f21db425ca38b5c97a631e23f6a4b17d46a739cb182be9c759721aae9efb3ad7fa7c36f9a73c5e813bca80921fe8aafe2f1ff7836cfae6ea66bde3; Path=/; Domain=.philadelphia.edu.jo; Secure; HttpOnly\n  Transfer-Encoding: chunked\n  \n  (Request type: HEAD)\n",
+            "http-methods": "\n  Supported Methods: POST OPTIONS",
+            "http-title": "Philadelphia University in Jordan",
+            "ssl-cert": "Subject: commonName=*.philadelphia.edu.jo\nSubject Alternative Name: DNS:*.philadelphia.edu.jo, DNS:philadelphia.edu.jo\nIssuer: commonName=Sectigo RSA Domain Validation Secure Server CA/organizationName=Sectigo Limited/stateOrProvinceName=Greater Manchester/countryName=GB\nPublic Key type: rsa\nPublic Key bits: 2048\nSignature Algorithm: sha256WithRSAEncryption\nNot valid before: 2025-03-01T00:00:00\nNot valid after:  2026-03-01T23:59:59\nMD5:   c038 bd90 f0a8 6157 b224 ea0e f0a3 68da\nSHA-1: fee2 909d 28b6 78a0 604f 4ba4 7f34 c580 b151 ac22"
+          }
+        }
+      ]
+    }
+  ]
+}

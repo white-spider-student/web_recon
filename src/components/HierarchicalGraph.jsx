@@ -11,6 +11,14 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   const [levels, setLevels] = useState(new Map());
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [maxVisibleLevel, setMaxVisibleLevel] = useState(null); // when set, force visibility by level
+  const [layout, setLayout] = useState(() => {
+    if (typeof window === 'undefined') return 'radial';
+    try {
+      return localStorage.getItem('graphLayoutPreset') || 'radial';
+    } catch (e) {
+      return 'radial';
+    }
+  });
 
   // Ensure any leftover debug panel from previous builds or edits is removed from the DOM
   useEffect(() => {
@@ -65,6 +73,14 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('graphLayoutPreset', layout);
+    } catch (e) {
+      // ignore persistence errors
+    }
+  }, [layout]);
 
   // centralized setter that persists and emits event
   const setExpanded = useCallback((updater) => {
@@ -222,9 +238,34 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       clearLevel: (...a) => { try { console.debug('[graph] clearLevel', ...a); } catch(e){}; return clearLevel(...a); },
       isExpanded: (...a) => { try { console.debug('[graph] isExpanded', ...a); } catch(e){}; return isExpanded(...a); },
       getExpandedNodes: () => { try { console.debug('[graph] getExpandedNodes'); } catch(e){}; return Array.from(expandedNodes); },
-      manualFit: (...a) => { try { console.debug('[graph] manualFit', ...a); } catch(e){}; return manualFit(...a); }
-    };
-  }, [data, expandToNode, manualFit]);
+      manualFit: (...a) => { try { console.debug('[graph] manualFit', ...a); } catch(e){}; return manualFit(...a); },
+      focusOn: (id, opts = {}) => {
+        try { console.debug('[graph] focusOn', id, opts); } catch(e){}
+        const n = (data?.nodes || []).find(nn => nn.id === id);
+        if (!n) return;
+        const { zoom = 1.8, duration = 600, delay = 100 } = opts;
+        const inst = fgRef.current;
+        if (!inst || !isFinite(n.x) || !isFinite(n.y)) return;
+        suppressAutoFit.current = true;
+        try {
+          inst.centerAt(n.x, n.y, duration);
+          inst.zoom(zoom, duration);
+        } finally {
+          setTimeout(() => { suppressAutoFit.current = false; }, duration + 60);
+        }
+      },
+      setLayoutPreset: (preset) => {
+        if (!preset) return;
+        const next = String(preset).toLowerCase();
+        try { console.debug('[graph] setLayoutPreset', next); } catch (e) {}
+        setLayout(prev => (prev === next ? prev : next));
+      },
+      getLayoutPreset: () => {
+        try { console.debug('[graph] getLayoutPreset ->', layout); } catch (e) {}
+        return layout;
+      }
+      };
+    }, [data, expandToNode, manualFit, layout]);
 
   const focusOnNode = useCallback((node, { zoom = 1.8, duration = 600, delay = 140, retries = 3 } = {}) => {
     if (!node) return;

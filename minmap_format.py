@@ -5,6 +5,11 @@ import glob
 # Use cleaned results directory (relative to project)
 clean_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "clean")
 
+FILE_LIKE_EXTS = (
+    'png','jpg','jpeg','gif','svg','js','css','zip','pdf','mp4','xml','json','txt','bak','conf','sql','ini',
+    'yaml','yml','ico','woff','woff2','ttf','eot'
+)
+
 def load_json(path):
     try:
         with open(path) as f:
@@ -28,10 +33,80 @@ else:
 
 nodes = []
 relationships = []
+node_lookup = {}
+relationship_lookup = set()
+
+
+def register_node(node):
+    node_lookup[node['id']] = node
+
+
+def ensure_basic_node(node_id, node_type, label=None):
+    existing = node_lookup.get(node_id)
+    if existing:
+        if node_type and existing.get('type') != node_type:
+            if node_type in ('endpoint', 'file') or not existing.get('type'):
+                existing['type'] = node_type
+                existing['group'] = node_type
+        if label and existing.get('value') == existing.get('id'):
+            existing['value'] = label
+            existing['label'] = label
+        return existing
+    node = {
+        'id': node_id,
+        'group': node_type,
+        'value': label or node_id,
+        'type': node_type,
+        'status': 0,
+        'size': 0,
+        'meta': {},
+        'headers': [],
+        'label': label or node_id
+    }
+    nodes.append(node)
+    register_node(node)
+    return node
+
+
+def ensure_relationship(source, target, rtype='contains'):
+    key = (source, target, rtype)
+    if key not in relationship_lookup:
+        relationships.append({'source': source, 'target': target, 'type': rtype})
+        relationship_lookup.add(key)
+
+
+def add_path_segments(host_id, segments, leaf_type=None):
+    if not segments:
+        return
+    parent_id = host_id
+    cumulative = ''
+    for i, seg in enumerate(segments):
+        if not seg:
+            continue
+        cumulative = f"{cumulative}/{seg}" if cumulative else f"/{seg}"
+        node_id = f"{host_id}{cumulative}"
+        is_last = (i == len(segments) - 1)
+        node_type = 'directory'
+        if is_last and leaf_type:
+            node_type = leaf_type
+        ensure_basic_node(node_id, node_type, label=seg)
+        ensure_relationship(parent_id, node_id)
+        parent_id = node_id
 
 if main_domain:
     # prepare list of hosts to include: main + subs
     hosts = [main_domain] + subdomains
+    # Optional: load HTML link discovery results to enrich graph
+    html_link_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results', f'html_links_{main_domain}.json')
+    html_links = load_json(html_link_file) or {}
+    discovered = html_links.get('discovered', {}) if isinstance(html_links, dict) else {}
+    discovered_urls = discovered.get('urls', []) or []
+    dirs_by_host = discovered.get('directories_by_host', {}) or {}
+    discovered_subs = [s for s in (discovered.get('subdomains', []) or []) if s and s != main_domain]
+    # Merge discovered subdomains into hosts list
+    for s in discovered_subs:
+        if s not in hosts:
+            hosts.append(s)
     for host in hosts:
         node_type = "domain" if host == main_domain else "subdomain"
         node = {"value": host, "type": node_type, "label": host}
@@ -105,6 +180,7 @@ if main_domain:
         node['status'] = meta.get('status', 0)
         node['size'] = meta.get('size', 0)
         node['meta'] = meta
+        node['label'] = host
         # Provide frontend-friendly headers array in addition to meta.headers
         if isinstance(meta.get('headers'), dict):
             node['headers'] = [{ 'key': k, 'value': v } for k, v in meta['headers'].items()]
@@ -114,9 +190,42 @@ if main_domain:
             node['headers'] = []
 
         nodes.append(node)
+        register_node(node)
         # relationships: main contains subs
         if host != main_domain:
-            relationships.append({"source": main_domain, "target": host, "type": "contains"})
+            ensure_relationship(main_domain, host)
+
+        # If HTML discovery produced directory paths for this host, add them
+        host_dirs = dirs_by_host.get(host, []) if isinstance(dirs_by_host, dict) else []
+        for d in host_dirs:
+            segs = [s for s in d.split('/') if s]
+            add_path_segments(host, segs)
+
+    # Add endpoint/file URLs discovered via HTML crawling
+    # Enhance: break each URL into hierarchical components (host → directories → endpoint)
+    for u in discovered_urls:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(u)
+            host = (p.hostname or '').lower()
+            if not host:
+                continue
+            if host not in node_lookup:
+                node_type_host = 'subdomain' if host != main_domain else 'domain'
+                ensure_basic_node(host, node_type_host, label=host)
+                if host != main_domain:
+                    ensure_relationship(main_domain, host)
+
+            path = p.path or ''
+            segs = [s for s in path.split('/') if s]
+            if not segs:
+                continue
+            last_seg = segs[-1]
+            ext = last_seg.split('.')[-1].lower() if (last_seg and '.' in last_seg) else ''
+            leaf_type = 'file' if ext in FILE_LIKE_EXTS else 'endpoint'
+            add_path_segments(host, segs, leaf_type=leaf_type)
+        except Exception:
+            continue
 
     # after processing all hosts, write viz JSON
     viz_json = {

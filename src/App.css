@@ -87,7 +87,7 @@ html,body,#root{
   overflow: hidden;
   position: relative;
   z-index: 1; /* Graph stays behind panel */
-  margin-right: 0; /* Remove gap, panel will overlay */
+  margin-right: var(--details-panel-width, 0px); /* Use 0 when panel is closed or not present */
 }
 
 .legend{

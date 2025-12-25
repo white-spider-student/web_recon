@@ -92,6 +92,20 @@ export const DetailsPanel = ({ node, onClose }) => {
   const maxWidth = 960;
   const startDragRef = useRef({ active: false });
 
+  // Expose panel width to CSS so the graph can reserve space on the right
+  useEffect(() => {
+    const w = node ? panelWidth : 0;
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--details-panel-width', `${w}px`);
+    }
+    return () => {
+      // On unmount, clear the reservation to avoid stale margins
+      if (typeof document !== 'undefined') {
+        document.documentElement.style.setProperty('--details-panel-width', '0px');
+      }
+    };
+  }, [panelWidth, node]);
+
   useEffect(() => {
     const handleMove = (e) => {
       if (!startDragRef.current.active) return;
@@ -118,6 +132,17 @@ export const DetailsPanel = ({ node, onClose }) => {
     startDragRef.current.active = true;
     document.body.classList.add('dp-resizing');
   };
+
+  // Keep the selected node visible while resizing the panel
+  useEffect(() => {
+    try {
+      if (node && window?.graphInstance?.focusOn) {
+        window.graphInstance.focusOn(node.id, { zoom: 1.6, duration: 240 });
+      }
+    } catch (e) {
+      // non-fatal; graph may not be ready
+    }
+  }, [panelWidth, node]);
 
   const resetWidth = () => {
     setPanelWidth(560);

@@ -1,0 +1,58 @@
+{
+  "target": "philadelphia.edu.jo",
+  "probes": [
+    {
+      "url": "https://philadelphia.edu.jo",
+      "ok": true,
+      "error": null,
+      "status_code": 200,
+      "headers": {
+        "Date": "Thu, 25 Dec 2025 17:17:18 GMT",
+        "P3P": "CP=\"NOI ADM DEV PSAi COM NAV OUR OTRo STP IND DEM\"",
+        "Expires": "Wed, 17 Aug 2005 00:00:00 GMT",
+        "Cache-Control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, private, must-revalidate",
+        "Pragma": "no-cache",
+        "Set-Cookie": "ba1bbdcc9006abb1219f9736c55c3a59=268357a1bece813f1c98c5189919ed42; path=/; secure; HttpOnly, TS013867ee=01c9d2e4aed99a7d8b3516319047f369a1ebdccf447fb3bd9622b87200f5bb4c26efa90253c14b00a1eee214db4ea2cd46695e7295b036253e9e5ce892aa6102d9b57ae5d9; Path=/; Domain=.philadelphia.edu.jo; Secure; HttpOnly",
+        "X-Content-Type-Options": "nosniff",
+        "Last-Modified": "Thu, 25 Dec 2025 17:17:18 GMT",
+        "Vary": "Accept-Encoding",
+        "Content-Encoding": "gzip",
+        "Content-Length": "26694",
+        "Keep-Alive": "timeout=5, max=100",
+        "Connection": "Keep-Alive",
+        "Content-Type": "text/html; charset=utf-8",
+        "Strict-Transport-Security": "max-age=16070400; includeSubDomains; preload"
+      },
+      "title": "Philadelphia University in Jordan",
+      "redirects": [],
+      "body_snippet": "<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en-gb\" lang=\"en-gb\" dir=\"ltr\">\n    <head>\n<!-- Global site tag (gtag.js) - Google Analytics -->\n<script async src=\"https://www.googletagmanager.com/gtag/js?id=UA-218079547-1\">\n</script>\n<script>\n  window.dataLayer = window.dataLayer || [];\n  function gtag(){dataLayer.push(arguments);}\n  gtag('js', new Date());\n  gtag('config', 'UA-218079547-1');\n  gtag('config', 'AW-10844181728');\n</script>\t\n        <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n\t\t<meta name=\"facebook-domain-verification\" content=\"g9wrmeltj07rn1x7dyya306ala97o2\" />\n            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n                                <!-- head -->\n                <base href=\"https://philadelphia.edu.jo/\" /",
+      "resolved_ip": "91.106.110.248",
+      "response_time_ms": 811,
+      "content_length": 26694,
+      "tls_cert": {
+        "pem": "-----BEGIN CERTIFICATE-----\nMIIGSjCCBTKgAwIBAgIQZYU/j0KGiS2C0cfqAheuUDANBgkqhkiG9w0BAQsFADCB\njzELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4G\nA1UEBxMHU2FsZm9yZDEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQD\nEy5TZWN0aWdvIFJTQSBEb21haW4gVmFsaWRhdGlvbiBTZWN1cmUgU2VydmVyIENB\nMB4XDTI1MDMwMTAwMDAwMFoXDTI2MDMwMTIzNTk1OVowIDEeMBwGA1UEAwwVKi5w\naGlsYWRlbHBoaWEuZWR1LmpvMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC\nAQEA35gXQ9XLz3qPvtfkunNMCH+L727d4O9Y9r+2aNXaUHgm8EfzFirg+BaOtAAK\n2GZlAeR/pN52Mine3oLahv8onai7QI21qck+BLje7zEGVJNMfVW7/OvgJ0xKHvYF\nHFfezYVDmwYon48kYVH9jXVi8Plq1zmvNYFYip0DbgEzZe2b/TWXYR1mf/kxNQdf\nXU2F7zpL+jKm7mhVkcOZSXGCLi8LgMsZxiDVPZbSAzGomNFQmR03ErbdMkbDk4bG\nP51FZ3Tn2udcNFkgey9aSjbsBSGsx4OIx0ow/e6goCoUMy3KDAWU0C/zCCSe+pT3\nPm9vjDqxMxfQGV176waN/cyXIQIDAQABo4IDDjCCAwowHwYDVR0jBBgwFoAUjYxe\nxFStiuF36Zv5mwXhuAGNYeEwHQYDVR0OBBYEFK9DWXv+N6lKFTtMs3eTEVjiDV/c\nMA4GA1UdDwEB/wQEAwIFoDAMBgNVHRMBAf8EAjAAMB0GA1UdJQQWMBQGCCsGAQUF\nBwMBBggrBgEFBQcDAjBJBgNVHSAEQjBAMDQGCysGAQQBsjEBAgIHMCUwIwYIKwYB\nBQUHAgEWF2h0dHBzOi8vc2VjdGlnby5jb20vQ1BTMAgGBmeBDAECATCBhAYIKwYB\nBQUHAQEEeDB2ME8GCCsGAQUFBzAChkNodHRwOi8vY3J0LnNlY3RpZ28uY29tL1Nl\nY3RpZ29SU0FEb21haW5WYWxpZGF0aW9uU2VjdXJlU2VydmVyQ0EuY3J0MCMGCCsG\nAQUFBzABhhdodHRwOi8vb2NzcC5zZWN0aWdvLmNvbTA1BgNVHREELjAsghUqLnBo\naWxhZGVscGhpYS5lZHUuam+CE3BoaWxhZGVscGhpYS5lZHUuam8wggGABgorBgEE\nAdZ5AgQCBIIBcASCAWwBagB3AJaXZL9VWJet90OHaDcIQnfp8DrV9qTzNm5GpD8P\nyqnGAAABlVDOtr8AAAQDAEgwRgIhAIrl+tY8m6Z3F2Ay31EBGG34GF0og5bCQgFX\nQqHXEKiKAiEA2rWk3K72G+wTZq+eQMHAejs19aXUtJyWBZDgTEiqRHIAdwAZhtTH\nKKpv/roDb3gqTQGRqs4tcjEPrs5dcEEtJUzH1AAAAZVQzrZTAAAEAwBIMEYCIQDx\nzYrrIpW97qcDwsZ3EM41VOKy0krclicff3Vyc3X+NAIhANfST56palUHm7TGDt8A\nuT6Owbhu/91rrW2i0Kr7pLvlAHYAyzj3FYl8hKFEX1vB3fvJbvKaWc1HCmkFhbDL\nFMMUWOcAAAGVUM62xQAABAMARzBFAiEAi6ttEsBm215h+bjfoRyMsI7DNuBBdL5n\n2OA7IyvP584CICKSlM8Obn5+QAYfVC1mHg6a0bZofA9XQ58qwhPqFVnIMA0GCSqG\nSIb3DQEBCwUAA4IBAQBeTQO2Ja/LocsH36VXj6Z02Fbl4g8Lxwit4NQbqKeYPrOU\njEUSzijDX0c5k7Ck1nEeo/sgwtfG2wBq6JexE5ZcSzgv/oiiwlk6h0Cm3trgNpzH\ngmOg1wOft0u8ld/RBsTOcCk5y3FOixL2j1cymM1HxCy14CvYLX9jTyVIlRXrfFBg\n/Rwy3w894ZC2paG5jH0gb8NcDrl9VFGQpqRGNGhErZVskSg2yg/si3toPtEi0CeR\n4Qp5Mr/+iZFYirSHzHrOJtG9BxHpmCJ2lDioRdtG8cmGnKvAJVzjbCL3DfEhkUCf\nwX9+XruZ6dinjMaV6fga8a0O6+JqsngzTNiTtwxy\n-----END CERTIFICATE-----\n"
+      },
+      "tech": [],
+      "wappalyzer": {
+        "error": "wappalyzer not installed"
+      },
+      "server_banner": "BigIP",
+      "banner_probe": [
+        {
+          "port": 443,
+          "tls": true,
+          "ok": true,
+          "banner": "HTTP/1.1 200 OK\r\nDate: Thu, 25 Dec 2025 17:17:19 GMT\r\nP3P: CP=\"NOI ADM DEV PSAi COM NAV OUR OTRo STP IND DEM\"\r\nExpires: Wed, 17 Aug 2005 00:00:00 GMT\r\nCache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0\r\nPragma: no-cache\r\nSet-Cookie: ba1bbdcc9006abb1219f9736c55c3a59=b4e8a574e65ba6dc2e53cd72e9392871; path=/; secure; HttpOnly\r\nX-Content-Type-Options: nosniff\r\nLast-Modified: Thu, 25 Dec 2025 17:17:19 GMT\r\nCache-Control: private, must-revalidate\r\nConnection: close\r\nContent-Type: text/html; charset=utf-8\r\nStrict-Transport-Security: max-age=16070400; includeSubDomains; preload\r\nSet-Cookie: TS013867ee=01c9d2e4ae2da16c99fb41780f841bab2f0bc459f54678e0b7138cd0f941f06993c354fa50b99912d9a39c365ffc773ab89657e20faeee8de388df95ec54b23a96b18624e7; Path=/; Domain=.philadelphia.edu.jo; Secure; HttpOnly\r\n\r\n",
+          "error": null
+        },
+        {
+          "port": 80,
+          "tls": false,
+          "ok": true,
+          "banner": "HTTP/1.0 302 Moved Temporarily\r\nLocation: https://philadelphia.edu.jo/\r\nServer: BigIP\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+          "error": null
+        }
+      ]
+    }
+  ]
+}

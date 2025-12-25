@@ -240,6 +240,16 @@ def main():
     ffuf_max = args.ffuf_max
     workers = max(1, int(args.workers))
 
+    # Always start with a clean results directory to avoid stale outputs between runs
+    try:
+        import shutil
+        if RESULTS_DIR.exists():
+            print(f"[run_all] Cleaning previous results under {RESULTS_DIR} ...")
+            shutil.rmtree(RESULTS_DIR, ignore_errors=True)
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"[run_all] WARNING: failed to fully clean results dir: {e}")
+
     # Run ffuf_subs (prefer import)
     ffuf_script = SCRIPTS_DIR / "ffuf_subs.py"
     if ffuf_script.exists():
@@ -268,6 +278,116 @@ def main():
     else:
         print(f"[run_all] Found {len(subdomains)} subdomains. Running per-subdomain scans...")
 
+    # Optional: augment subdomains by crawling root homepage for linked subdomains
+    try:
+        ok, html_json_fname = run_tool("html_link_discovery", domain, timeout=90)
+        print(f"[run_all] html_link_discovery(root) -> {html_json_fname} (ok={ok})")
+        try:
+            # The html_link_discovery tool may have written the real discovery file as
+            # results/html_links_<label>.json while run_tool returned a wrapper file
+            # (html_link_discovery_<label>.json) containing stdout. Try several
+            # candidate paths and extract the real discovery object.
+            actual_html_path = None
+            candidates = []
+            # the file returned by run_tool may be a wrapper filename
+            try:
+                if html_json_fname:
+                    candidates.append(RESULTS_DIR / html_json_fname)
+            except Exception:
+                pass
+            # common html_links file pattern
+            candidates.append(RESULTS_DIR / f"html_links_{domain.replace('.', '_')}.json")
+            # glob any html_links file that contains the domain fragment
+            candidates.extend(list(RESULTS_DIR.glob(f"html_links_*{domain.replace('.', '_')}*.json")))
+
+            data = None
+            for c in candidates:
+                try:
+                    if not c.exists():
+                        continue
+                    raw = json.loads(c.read_text())
+                    # if this JSON already contains the discovery keys, use it
+                    if isinstance(raw, dict) and raw.get('discovered'):
+                        data = raw
+                        actual_html_path = c
+                        break
+                    # some wrappers store the crawler stdout under 'output'
+                    if isinstance(raw, dict) and isinstance(raw.get('output'), str):
+                        try:
+                            inner = json.loads(raw.get('output'))
+                            if isinstance(inner, dict) and inner.get('discovered'):
+                                data = inner
+                                actual_html_path = c
+                                break
+                        except Exception:
+                            pass
+                    # some other wrappers may embed the payload under different keys
+                    # fall back to using the raw object if it looks like discovery
+                    if isinstance(raw, dict) and (raw.get('discovered') is not None):
+                        data = raw
+                        actual_html_path = c
+                        break
+                except Exception:
+                    continue
+
+            if data is None:
+                # final fallback: try to read the original file directly and parse
+                try:
+                    candidate = RESULTS_DIR / html_json_fname
+                    if candidate.exists():
+                        data = json.loads(candidate.read_text())
+                        actual_html_path = candidate
+                except Exception:
+                    data = None
+
+            if data is None:
+                raise ValueError('could not locate html_link_discovery discovery JSON')
+
+            linked_subs = [s for s in data.get("discovered", {}).get("subdomains", []) if s.endswith(domain)]
+            # Show discovered URLs from the website to help verify crawling
+            discovered_urls = data.get("discovered", {}).get("urls", []) or []
+            if discovered_urls:
+                print(f"[run_all] Discovered {len(discovered_urls)} URLs from HTML crawling:")
+                # Print a limited preview to keep logs readable
+                preview_count = min(30, len(discovered_urls))
+                for u in discovered_urls[:preview_count]:
+                    print(f"    - {u}")
+                if len(discovered_urls) > preview_count:
+                    print(f"    ... and {len(discovered_urls) - preview_count} more")
+            if linked_subs:
+                before = set(subdomains)
+                subdomains = sorted(list(before.union(linked_subs)))
+                print(f"[run_all] Added {len(set(linked_subs)-before)} subdomains from HTML links")
+            # Import discovered endpoints/directories into the database for visualization
+            try:
+                importer = PROJECT_ROOT / 'recon' / 'import_html_links.py'
+                if importer.exists():
+                    # Use website URL equal to the domain string (frontend expects this mapping)
+                    imp_arg = str(actual_html_path) if actual_html_path is not None else str(RESULTS_DIR / html_json_fname)
+                    ok_imp, out_imp = run_subprocess_script(importer, domain, extra_args=[imp_arg])
+                    print(f"[run_all] import_html_links -> {out_imp[:180]}...")
+                    # Also produce a hierarchical visualization JSON for the frontend
+                    try:
+                        viz_script = PROJECT_ROOT / 'scripts' / 'build_hierarchical_json.py'
+                        if viz_script.exists():
+                            viz_out = RESULTS_DIR / 'clean' / f"{domain}_viz.json"
+                            viz_in = imp_arg
+                            ok_viz, out_viz = run_subprocess_script(viz_script, viz_in, extra_args=[str(viz_out)])
+                            msg = out_viz if isinstance(out_viz, str) else str(out_viz)
+                            print(f"[run_all] build_hierarchical_json -> {msg[:180]}...")
+                        else:
+                            print("[run_all] build_hierarchical_json.py not found; skipping viz JSON generation")
+                    except Exception as viz_err:
+                        print(f"[run_all] build_hierarchical_json error: {viz_err}")
+                else:
+                    print("[run_all] import_html_links.py not found; skip DB import of discovered URLs")
+            except Exception as imp_err:
+                print(f"[run_all] import_html_links error: {imp_err}")
+        except Exception as e:
+            print(f"[run_all] failed to read html_link_discovery output: {e}")
+    except Exception as e:
+        print(f"[run_all] html_link_discovery error: {e}")
+
     # Process per-subdomain work in parallel to speed up large lists.
     def process_subdomain(sd: str):
         """Run dirsearch and simple_fingerprint for a single subdomain."""
@@ -277,13 +397,33 @@ def main():
 
             # dirsearch: prefer it to write its own JSON file
             output_path = RESULTS_DIR / f"dirsearch_{clean_sd}.json"
-            extra_args = ["-u", f"http://{clean_sd}", "-o", str(output_path), "-O", "json"]
+            extra_args = ["-u", f"http://{clean_sd}", "-o", str(output_path), "--format=json"]
             dir_timeout = 1800
             ok, fname = run_tool("dirsearch", sd, timeout=dir_timeout, extra_args=extra_args)
-            if not ok and output_path.exists() and output_path.stat().st_size > 0:
-                ok = True
-                fname = output_path.name
+            if output_path.exists() and output_path.stat().st_size > 0:
+                try:
+                    _ = json.loads(output_path.read_text())
+                    ok = True
+                    fname = output_path.name
+                except Exception:
+                    pass
             print(f"  dirsearch -> {fname} (ok={ok})")
+
+            # Import dirsearch results into the DB for visualization if available
+            try:
+                if ok and fname:
+                    dir_json = RESULTS_DIR / fname
+                    if dir_json.exists() and dir_json.stat().st_size > 0:
+                        importer = PROJECT_ROOT / 'recon' / 'import_dirsearch.py'
+                        if importer.exists():
+                            ok_imp, out_imp = run_subprocess_script(importer, domain, extra_args=[clean_sd, str(dir_json)])
+                            # Trim output to reasonable length in logs
+                            msg = out_imp if isinstance(out_imp, str) else str(out_imp)
+                            print(f"  import_dirsearch -> {msg[:180]}...")
+                        else:
+                            print("  import_dirsearch.py not found; skipping DB import for dirsearch")
+            except Exception as imp_e:
+                print(f"  import_dirsearch error: {imp_e}")
 
             # Fast scheme detection (short timeout) - fallback to both
             schemes = detect_schemes_fast(sd, timeout=2)

@@ -4,6 +4,90 @@ import { HierarchicalGraph } from './components/HierarchicalGraph';
 import { DetailsPanel } from './components/DetailsPanel';
 import axios from 'axios';
 
+const normalizeUrlParts = (input) => {
+  if (!input) return null;
+  let raw = String(input).trim();
+  if (!raw) return null;
+  raw = raw.replace(/#.*$/, '');
+  const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw);
+  let parsed;
+  try {
+    parsed = new URL(hasScheme ? raw : `http://${raw}`);
+  } catch (e) {
+    return null;
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  let port = parsed.port;
+  if ((parsed.protocol === 'http:' && port === '80') || (parsed.protocol === 'https:' && port === '443')) {
+    port = '';
+  }
+  const host = port ? `${hostname}:${port}` : hostname;
+  let path = parsed.pathname || '/';
+  path = path.replace(/\/{2,}/g, '/');
+  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+  const pathSegments = path === '/' ? [] : path.split('/').filter(Boolean);
+  return { host, hostname, port, pathSegments };
+};
+
+const getRootHostname = (hostname) => {
+  if (!hostname) return hostname;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return hostname;
+  if (hostname.includes(':')) return hostname;
+  const parts = hostname.split('.').filter(Boolean);
+  if (parts.length <= 2) return hostname;
+  return parts.slice(-2).join('.');
+};
+
+const looksLikeFile = (segment) => {
+  const idx = segment.lastIndexOf('.');
+  return idx > 0 && idx < segment.length - 1;
+};
+
+const buildGraph = (urls) => {
+  const nodeMap = new Map();
+  const edgeMap = new Map();
+
+  const addNode = (node) => {
+    if (!nodeMap.has(node.id)) nodeMap.set(node.id, node);
+  };
+
+  const addEdge = (source, target) => {
+    const key = `${source}->${target}`;
+    if (!edgeMap.has(key)) edgeMap.set(key, { source, target, type: 'contains' });
+  };
+
+  urls.forEach((url) => {
+    const parsed = normalizeUrlParts(url);
+    if (!parsed) return;
+    const { host, hostname, port, pathSegments } = parsed;
+    if (!host) return;
+    const rootHostname = getRootHostname(hostname);
+    const rootHost = port ? `${rootHostname}:${port}` : rootHostname;
+    const rootId = `host:${rootHost}`;
+    addNode({ id: rootId, type: 'domain', label: rootHost, hostname: rootHost, path: '/' });
+    let parentId = rootId;
+    const isSubdomain = rootHost !== host;
+    if (isSubdomain) {
+      const subdomainId = `host:${host}`;
+      addNode({ id: subdomainId, type: 'subdomain', label: host, hostname: host, path: '/' });
+      addEdge(rootId, subdomainId);
+      parentId = subdomainId;
+    }
+    if (!pathSegments.length) return;
+    pathSegments.forEach((segment, index) => {
+      const prefix = `/${pathSegments.slice(0, index + 1).join('/')}`;
+      const nodeId = `path:${host}:${prefix}`;
+      const isLast = index === pathSegments.length - 1;
+      const nodeType = isLast && looksLikeFile(segment) ? 'file' : 'directory';
+      addNode({ id: nodeId, type: nodeType, label: prefix, hostname: host, path: prefix, segment });
+      addEdge(parentId, nodeId);
+      parentId = nodeId;
+    });
+  });
+
+  return { nodes: Array.from(nodeMap.values()), edges: Array.from(edgeMap.values()) };
+};
+
 export default function App() {
   const [target, setTarget] = useState('waitbutwhy.com');
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -16,6 +100,17 @@ export default function App() {
   const [highlightPath, setHighlightPath] = useState([]); // array of node ids that form the path
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // When details panel is closed, ensure graph uses full width
+  useEffect(() => {
+    try {
+      if (typeof document !== 'undefined') {
+        const value = selectedNode ? (getComputedStyle(document.documentElement).getPropertyValue('--details-panel-width') || '0px') : '0px';
+        document.documentElement.style.setProperty('--details-panel-width', value);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [selectedNode]);
 
   // Filter state
   const [statusFilters, setStatusFilters] = useState({ '200': true, '403': true, '500': true });
@@ -168,7 +263,7 @@ export default function App() {
 
     // if exactly one match, compute path from domain root to it
     if (matches.length === 1) {
-      const rootNode = (nodes.find(n => n.group === 'domain') || nodes[0]);
+      const rootNode = (nodes.find(n => n.type === 'domain') || nodes[0]);
       if (rootNode) {
         const path = findShortestPath(rootNode.id, matches[0]);
         setHighlightPath(path);
@@ -206,48 +301,83 @@ export default function App() {
         console.log(`Found existing website: ${website.name} (ID: ${websiteId})`);
       }
       
-      // Fetch nodes and relationships for the website
+      // Fetch nodes for the website
       const response = await axios.get(`http://localhost:3001/websites/${websiteId}/nodes`);
-  const { nodes, relationships } = response.data;
-  // remember current website id so we can lazy-load single node details later
-  setCurrentWebsiteId(websiteId);
+      const { nodes } = response.data;
+      // remember current website id so we can lazy-load single node details later
+      setCurrentWebsiteId(websiteId);
       
       console.log('=== DEBUG INFO ===');
       console.log('Website ID:', websiteId);
       console.log('Nodes received:', nodes.length);
-      console.log('Relationships received:', relationships.length);
-      console.log('Sample relationships:', relationships.slice(0, 3));
       
       // Transform nodes to match the expected format
       // Preserve the full node object so DetailsPanel can access node.meta, headers, technologies etc.
       const transformedNodes = nodes.map(node => ({
-        // keep id/label/visual fields but also embed full raw node under _raw
-        id: node.id,
+        // spread raw node fields to make them available on the node object
+        ...node,
+        // canonical id to be used by links
+        id: String(node.id),
         group: node.type,
         type: node.type,
         value: node.value,
         status: node.status,
         size: node.size,
-        label: node.value,
-        // spread raw node fields to make them available on the node object
-        ...node
+        label: node.value
       }));
-      
-      // Transform relationships to match the expected format
-      const transformedLinks = relationships.map(rel => ({
-        source: rel.source,
-        target: rel.target,
-        type: rel.type || 'contains'
-      }));
+
+      const urlCandidates = transformedNodes
+        .map(n => n.value || n.id)
+        .filter(Boolean);
+
+      const { nodes: graphNodes, edges } = buildGraph(urlCandidates);
+
+      const metaByHostId = new Map();
+      const metaByPathId = new Map();
+      transformedNodes.forEach(n => {
+        const parsed = normalizeUrlParts(n.value || n.id);
+        if (!parsed) return;
+        const { host, pathSegments } = parsed;
+        if (!host) return;
+        if (!pathSegments.length) {
+          if (n.type === 'domain' || n.type === 'subdomain') {
+            const hostId = `host:${host}`;
+            if (!metaByHostId.has(hostId)) metaByHostId.set(hostId, n);
+          }
+          return;
+        }
+        const prefix = `/${pathSegments.join('/')}`;
+        const pathId = `path:${host}:${prefix}`;
+        if (!metaByPathId.has(pathId)) metaByPathId.set(pathId, n);
+      });
+
+      const enrichedNodes = graphNodes.map(n => {
+        const meta = n.type === 'domain' ? metaByHostId.get(n.id) : metaByPathId.get(n.id);
+        if (!meta) return n;
+        return {
+          ...n,
+          apiId: meta.id,
+          status: meta.status,
+          value: meta.value,
+          meta: meta.meta,
+          headers: meta.headers,
+          technologies: meta.technologies,
+          method: meta.method,
+          file_type: meta.file_type,
+          size: meta.size
+        };
+      });
+
+      const transformedLinks = edges;
       
       console.log('Final graph data:', { 
-        nodes: transformedNodes.length, 
+        nodes: enrichedNodes.length, 
         links: transformedLinks.length 
       });
       console.log('Sample links:', transformedLinks.slice(0, 3));
       console.log('=== END DEBUG ===');
 
-      setGraphData({ nodes: transformedNodes, links: transformedLinks });
+      setGraphData({ nodes: enrichedNodes, links: transformedLinks });
 
       // After the graph data updates, trigger a manual fit to show the full result set.
       setTimeout(() => {
@@ -396,8 +526,9 @@ export default function App() {
               highlightPath={highlightPath}
               onNodeClick={async (node, highlightIds) => {
                 try {
-                  if (currentWebsiteId) {
-                    const encodedNodeId = encodeURIComponent(node.id);
+                  const apiId = node.apiId;
+                  if (currentWebsiteId && apiId !== undefined && apiId !== null) {
+                    const encodedNodeId = encodeURIComponent(apiId);
                     const res = await axios.get(`http://localhost:3001/websites/${currentWebsiteId}/nodes/${encodedNodeId}`);
                     setSelectedNode(res.data.node || node);
                   } else {
@@ -417,7 +548,20 @@ export default function App() {
         {selectedNode && (
           <DetailsPanel
             node={selectedNode}
-            onClose={() => setSelectedNode(null)}
+            onClose={() => {
+              setSelectedNode(null);
+              // wait ~1 second, then zoom to fit (home)
+              setTimeout(() => {
+                try {
+                  if (window?.graphInstance?.manualFit) {
+                    window.graphInstance.manualFit(400, 100, 80);
+                  }
+                } catch (e) {
+                  // non-fatal; graph may not be ready
+                  console.debug('manualFit on close failed', e);
+                }
+              }, 1000);
+            }}
           />
         )}
       </div>
