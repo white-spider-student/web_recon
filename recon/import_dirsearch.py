@@ -23,6 +23,7 @@ DB_PATH = SERVER_DIR / 'data.db'
 
 def apex_of(host: str) -> str:
     host = (host or '').lower()
+    host = host.split(':', 1)[0]
     parts = host.split('.')
     if len(parts) >= 2:
         return '.'.join(parts[-2:])
@@ -31,10 +32,16 @@ def apex_of(host: str) -> str:
 
 def get_host_from_url_or_host(val: str) -> str:
     s = (val or '').strip()
+    if not s:
+        return ''
     try:
-        p = urlparse(s)
+        p = urlparse(s if '://' in s else f'http://{s}')
         if p.hostname:
-            return p.hostname.lower()
+            host = p.hostname.lower()
+            port = p.port
+            if port in (80, 443):
+                port = None
+            return f'{host}:{port}' if port else host
     except Exception:
         pass
     s = re.sub(r'^https?://', '', s, flags=re.I)
@@ -94,13 +101,112 @@ def split_path_segments(path: str):
     return [s for s in path.split('/') if s]
 
 
+def normalize_host(host: str) -> str:
+    host = (host or '').strip()
+    if not host:
+        return ''
+    return get_host_from_url_or_host(host)
+
+
+def detect_schemes(results):
+    schemes = set()
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        url_val = item.get('url') or ''
+        if '://' not in url_val:
+            continue
+        try:
+            p = urlparse(url_val)
+            if p.scheme:
+                schemes.add(p.scheme.lower())
+        except Exception:
+            continue
+    return sorted(schemes)
+
+
+def choose_scheme(schemes):
+    if 'https' in schemes and 'http' in schemes:
+        print('Using https (preferred)')
+        return 'https'
+    if schemes:
+        chosen = schemes[0]
+        print(f'Using {chosen} (only available)')
+        return chosen
+    print('WARNING: No schemes detected; defaulting to https')
+    return 'https'
+
+
+def parse_dirsearch_item(item, default_scheme, default_host, index):
+    if not isinstance(item, dict):
+        print(f'WARN: Skipping record #{index} (expected dict)')
+        return None
+    url_or_path = item.get('url') or item.get('path') or item.get('target') or ''
+    if not url_or_path:
+        print(f'WARN: Skipping record #{index} (missing url/path)')
+        return None
+    raw = str(url_or_path).strip()
+    raw = raw.split('#')[0]
+    has_scheme = '://' in raw
+    try:
+        if has_scheme:
+            p = urlparse(raw)
+        elif raw.startswith('/'):
+            p = urlparse(f'{default_scheme}://{default_host}{raw}')
+        else:
+            p = urlparse(f'{default_scheme}://{default_host}/' + raw)
+    except Exception:
+        print(f'WARN: Skipping record #{index} (unparseable url/path)')
+        return None
+    host = p.hostname.lower() if p.hostname else default_host
+    port = p.port
+    if port in (80, 443):
+        port = None
+    if port:
+        host = f'{host}:{port}'
+    path = p.path or '/'
+    path = re.sub(r'/+', '/', path)
+    if not path.startswith('/'):
+        path = '/' + path
+    return {
+        'host': host,
+        'path': path,
+        'status': item.get('status') or item.get('code'),
+        'size': item.get('contentLength') or item.get('length') or item.get('size')
+    }
+
+
 def main():
     if len(sys.argv) < 4:
         print('Usage: python3 import_dirsearch.py <website_url> <host> <json_path>')
         sys.exit(1)
 
+    if len(sys.argv) >= 2 and sys.argv[1] == '--self-check':
+        sample_results = [
+            {'url': 'http://www.example.com/admin/'},
+            {'url': 'https://www.example.com/assets/app.js?ver=1.2.3'},
+            {'path': '/images/logo.png'},
+            {},
+            'bad-entry'
+        ]
+        schemes = detect_schemes(sample_results)
+        print(f'Detected schemes: {schemes}')
+        scheme = choose_scheme(schemes)
+        host = normalize_host('www.example.com')
+        for idx, item in enumerate(sample_results):
+            parsed = parse_dirsearch_item(item, scheme, host, idx)
+            if parsed:
+                print(f'Parsed #{idx}: host={parsed["host"]} path={parsed["path"]}')
+        schemes = detect_schemes([{'url': 'http://only-http.local/path'}])
+        print(f'Detected schemes: {schemes}')
+        choose_scheme(schemes)
+        schemes = detect_schemes([])
+        print(f'Detected schemes: {schemes}')
+        choose_scheme(schemes)
+        return
+
     website_url = sys.argv[1].strip()
-    host = sys.argv[2].strip()
+    host = normalize_host(sys.argv[2])
     json_path = Path(sys.argv[3])
 
     if not json_path.exists():
@@ -125,32 +231,28 @@ def main():
             ntype = 'subdomain' if host != apex_of(host) else 'domain'
             parent_id = insert_node(db, website_id, host, ntype)
 
-        for item in results:
-            try:
-                url_or_path = item.get('url') or item.get('path') or ''
-                # Normalize into a path component
-                try:
-                    p = urlparse(url_or_path)
-                    path = p.path or url_or_path
-                except Exception:
-                    path = url_or_path
-                if not path.startswith('/'):
-                    path = '/' + path
-                segs = split_path_segments(path)
-                cumulative = ''
-                prev_id = parent_id
-                for i, seg in enumerate(segs):
-                    cumulative = cumulative + '/' + seg if cumulative else '/' + seg
-                    node_value = f"{host}{cumulative}"
-                    ntype = classify_type_from_segment(seg, is_last=(i == len(segs) - 1))
-                    node_id = insert_node(db, website_id, node_value, ntype,
-                                          status=item.get('status') or item.get('code'),
-                                          size=item.get('contentLength') or item.get('length') or item.get('size'))
-                    insert_rel(db, prev_id, node_id, 'contains')
-                    prev_id = node_id
-                inserted += 1
-            except Exception:
+        schemes = detect_schemes(results)
+        print(f'Detected schemes for {host}: {schemes}')
+        chosen_scheme = choose_scheme(schemes)
+
+        for idx, item in enumerate(results):
+            parsed = parse_dirsearch_item(item, chosen_scheme, host, idx)
+            if not parsed:
                 continue
+            path = parsed['path']
+            segs = split_path_segments(path)
+            cumulative = ''
+            prev_id = parent_id
+            for i, seg in enumerate(segs):
+                cumulative = cumulative + '/' + seg if cumulative else '/' + seg
+                node_value = f"{parsed['host']}{cumulative}"
+                ntype = classify_type_from_segment(seg, is_last=(i == len(segs) - 1))
+                node_id = insert_node(db, website_id, node_value, ntype,
+                                      status=parsed['status'],
+                                      size=parsed['size'])
+                insert_rel(db, prev_id, node_id, 'contains')
+                prev_id = node_id
+            inserted += 1
 
         # Update a convenience counter on the parent host node if column exists
         try:

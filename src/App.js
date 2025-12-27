@@ -25,8 +25,9 @@ const normalizeUrlParts = (input) => {
   let path = parsed.pathname || '/';
   path = path.replace(/\/{2,}/g, '/');
   if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+  const pathWithQuery = `${path}${parsed.search || ''}`;
   const pathSegments = path === '/' ? [] : path.split('/').filter(Boolean);
-  return { host, hostname, port, pathSegments };
+  return { host, hostname, port, pathSegments, path, pathWithQuery };
 };
 
 const getRootHostname = (hostname) => {
@@ -36,6 +37,20 @@ const getRootHostname = (hostname) => {
   const parts = hostname.split('.').filter(Boolean);
   if (parts.length <= 2) return hostname;
   return parts.slice(-2).join('.');
+};
+
+const lastSegment = (path) => {
+  if (path == null) return '/';
+  let cleaned = String(path);
+  cleaned = cleaned.replace(/[?#].*$/, '');
+  if (cleaned.length > 1 && cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1);
+  const parts = cleaned.split('/').filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '/';
+};
+
+const truncateLabel = (label) => {
+  if (!label) return label;
+  return label.length > 24 ? `${label.slice(0, 24)}…` : label;
 };
 
 const looksLikeFile = (segment) => {
@@ -59,17 +74,35 @@ const buildGraph = (urls) => {
   urls.forEach((url) => {
     const parsed = normalizeUrlParts(url);
     if (!parsed) return;
-    const { host, hostname, port, pathSegments } = parsed;
+    const { host, hostname, port, pathSegments, pathWithQuery } = parsed;
     if (!host) return;
     const rootHostname = getRootHostname(hostname);
     const rootHost = port ? `${rootHostname}:${port}` : rootHostname;
     const rootId = `host:${rootHost}`;
-    addNode({ id: rootId, type: 'domain', label: rootHost, hostname: rootHost, path: '/' });
+    addNode({
+      id: rootId,
+      type: 'host',
+      role: 'root',
+      label: truncateLabel(rootHostname),
+      fullLabel: rootHost,
+      hostname: rootHost,
+      path: '/',
+      level: 1
+    });
     let parentId = rootId;
     const isSubdomain = rootHost !== host;
     if (isSubdomain) {
       const subdomainId = `host:${host}`;
-      addNode({ id: subdomainId, type: 'subdomain', label: host, hostname: host, path: '/' });
+      addNode({
+        id: subdomainId,
+        type: 'host',
+        role: 'subdomain',
+        label: truncateLabel(hostname),
+        fullLabel: host,
+        hostname: host,
+        path: '/',
+        level: 2
+      });
       addEdge(rootId, subdomainId);
       parentId = subdomainId;
     }
@@ -78,8 +111,20 @@ const buildGraph = (urls) => {
       const prefix = `/${pathSegments.slice(0, index + 1).join('/')}`;
       const nodeId = `path:${host}:${prefix}`;
       const isLast = index === pathSegments.length - 1;
-      const nodeType = isLast && looksLikeFile(segment) ? 'file' : 'directory';
-      addNode({ id: nodeId, type: nodeType, label: prefix, hostname: host, path: prefix, segment });
+      const nodeType = isLast && looksLikeFile(segment) ? 'file' : (isLast ? 'path' : 'dir');
+      const baseLevel = isSubdomain ? 2 : 1;
+      const shortLabel = lastSegment(prefix);
+      const fullLabel = isLast && pathWithQuery ? pathWithQuery : prefix;
+      addNode({
+        id: nodeId,
+        type: nodeType,
+        label: truncateLabel(shortLabel),
+        fullLabel,
+        hostname: host,
+        path: prefix,
+        segment,
+        level: baseLevel + index + 1
+      });
       addEdge(parentId, nodeId);
       parentId = nodeId;
     });
@@ -117,10 +162,9 @@ export default function App() {
   const [techFilters, setTechFilters] = useState({ 'React': true, 'WordPress': true, 'Laravel': true });
   // Visualization filters
   const [typeFilters, setTypeFilters] = useState({ 
-    domain: true, 
-    subdomain: true, 
-    directory: true, 
-    endpoint: true, 
+    host: true, 
+    dir: true, 
+    path: true, 
     file: true 
   });
   const [methodFilters, setMethodFilters] = useState({ GET: true, POST: true });
@@ -180,7 +224,7 @@ export default function App() {
     // Fallback: iterative expansion using expandNode/collapseAll if expandToLevel not available
     const nodes = graphData.nodes || [];
     const links = graphData.links || [];
-    const root = nodes.find(n => n.type === 'domain') || nodes[0];
+    const root = nodes.find(n => n.type === 'host' && n.role === 'root') || nodes.find(n => n.type === 'host') || nodes[0];
     if (!root) return console.error('No root node');
 
     // Collapse all then expand root
@@ -261,9 +305,9 @@ export default function App() {
     const matches = nodes.filter(n => String(n.id).toLowerCase().includes(q.toLowerCase())).map(n => n.id);
     setHighlightedNodes(matches);
 
-    // if exactly one match, compute path from domain root to it
+    // if exactly one match, compute path from root to it
     if (matches.length === 1) {
-      const rootNode = (nodes.find(n => n.type === 'domain') || nodes[0]);
+      const rootNode = (nodes.find(n => n.type === 'host' && n.role === 'root') || nodes.find(n => n.type === 'host') || nodes[0]);
       if (rootNode) {
         const path = findShortestPath(rootNode.id, matches[0]);
         setHighlightPath(path);
@@ -352,13 +396,17 @@ export default function App() {
       });
 
       const enrichedNodes = graphNodes.map(n => {
-        const meta = n.type === 'domain' ? metaByHostId.get(n.id) : metaByPathId.get(n.id);
+        const meta = n.type === 'host' ? metaByHostId.get(n.id) : metaByPathId.get(n.id);
         if (!meta) return n;
         return {
           ...n,
           apiId: meta.id,
           status: meta.status,
           value: meta.value,
+          fullLabel: meta.value || n.fullLabel,
+          scan_started_at: meta.scan_started_at,
+          scan_finished_at: meta.scan_finished_at,
+          timestamp: meta.timestamp,
           meta: meta.meta,
           headers: meta.headers,
           technologies: meta.technologies,
@@ -419,6 +467,17 @@ export default function App() {
         <button onClick={handleScan} disabled={loading} style={{ width: '100%', background: loading ? '#1a5e63' : '#2de2e6', color: '#042426', fontWeight: 600, fontSize: 16, border: 'none', borderRadius: 7, padding: '10px 0', marginBottom: 22, boxShadow: '0 2px 8px rgba(45,226,230,0.12)', cursor: loading ? 'not-allowed' : 'pointer' }}>
           {loading ? 'Scanning...' : 'Start Scan'}
         </button>
+        <button
+          onClick={() => {
+            const raw = (target || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+            if (!raw) return;
+            const url = `/api/report/full.pdf?scanId=${encodeURIComponent(raw)}`;
+            window.open(url, '_blank');
+          }}
+          style={{ width: '100%', background: '#1f2937', color: '#d6e6ea', fontWeight: 600, fontSize: 14, border: '1px solid #24303b', borderRadius: 7, padding: '9px 0', marginBottom: 18, cursor: 'pointer' }}
+        >
+          Generate Full Report
+        </button>
         {error && (
           <div style={{ color: '#ff6b6b', marginBottom: 22, padding: '10px', background: 'rgba(255,107,107,0.1)', borderRadius: 6 }}>
             {error}
@@ -429,9 +488,9 @@ export default function App() {
           {(function() {
             const nodes = graphData.nodes || [];
             const total = nodes.length || 1;
-            const subdomains = nodes.filter(n => n.type === 'subdomain').length;
-            const directories = nodes.filter(n => n.type === 'directory').length;
-            const endpoints = nodes.filter(n => n.type === 'endpoint' || n.type === 'file').length;
+            const subdomains = nodes.filter(n => n.type === 'host' && n.role === 'subdomain').length;
+            const directories = nodes.filter(n => n.type === 'dir').length;
+            const endpoints = nodes.filter(n => n.type === 'path' || n.type === 'file').length;
             const p = (v) => Math.round((v / Math.max(1, total)) * 100);
             return (
               <>

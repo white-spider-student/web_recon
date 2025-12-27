@@ -1066,6 +1066,12 @@
 .dp-meta-card { background:#172129; border:1px solid #22313b; border-radius:12px; padding:10px 12px 12px; display:flex; flex-direction:column; gap:4px; min-width:0; }
 .dp-meta-label { font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:#7fa6bc; }
 .dp-meta-value { font-size:13px; font-weight:500; color:#e4f2fa; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dp-meta-value--nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.dp-meta-card--full { grid-column: 1 / -1; position: relative; }
+.dp-meta-value--full { white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.35; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.dp-copy-btn { align-self: flex-start; margin-top: 6px; font-size: 11px; padding: 4px 8px; border-radius: 8px; border: 1px solid #2a3a45; background: #1a242c; color: #bfe7f2; cursor: pointer; }
+.dp-copy-btn:hover { background: #21303a; }
+.dp-copy-note { position: absolute; right: 10px; bottom: 10px; font-size: 10px; color: #9fd9ff; }
 
 /* Tabs */
 .dp-tabs { display:flex; gap:6px; padding:16px 24px 12px; background:#0e1419; border-bottom:1px solid #1f2a33; }

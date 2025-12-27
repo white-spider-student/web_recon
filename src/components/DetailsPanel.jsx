@@ -80,6 +80,7 @@ export const DetailsPanel = ({ node, onClose }) => {
 
   const [showFullResponse, setShowFullResponse] = useState(false);
   const [activeTab, setActiveTab] = useState('headers');
+  const [copyNotice, setCopyNotice] = useState('');
   const [panelWidth, setPanelWidth] = useState(() => {
     if (typeof window !== 'undefined') {
       const stored = window.localStorage.getItem('detailsPanelWidth');
@@ -165,10 +166,48 @@ export const DetailsPanel = ({ node, onClose }) => {
   const server = node?.server || node?.meta?.server || 'Unknown';
   const port = node?.port || node?.meta?.port || '—';
   const scheme = node?.protocol || node?.scheme || node?.meta?.scheme || '—';
-  const nodeId = node?.label || node?.value || node?.id || 'Node details';
+  const fullPath = node?.fullLabel || node?.value || '';
+  const scanFinishedAt = node?.scan_finished_at || node?.meta?.scan_finished_at || '';
+  const getDisplayName = (nodeData) => {
+    if (!nodeData) return 'Node details';
+    if (nodeData.type === 'host') {
+      return nodeData.hostname || nodeData.label || nodeData.id || 'Node details';
+    }
+    const candidate = nodeData.fullLabel || nodeData.value || '';
+    if (typeof candidate === 'string' && candidate.trim()) {
+      const cleaned = candidate.split('#')[0].split('?')[0];
+      const parts = cleaned.split('/').filter(Boolean);
+      if (parts.length) return parts[parts.length - 1];
+    }
+    return nodeData.label || nodeData.id || 'Node details';
+  };
+  const displayName = getDisplayName(node);
   const nodeType = node?.type || 'node';
   const totalConnections = (Array.isArray(node?.links) ? node.links.length : 0) +
     (Array.isArray(node?.edges) ? node.edges.length : 0);
+  const copyFullPath = async () => {
+    if (!fullPath) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(fullPath);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = fullPath;
+        ta.setAttribute('readonly', 'true');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopyNotice('Copied');
+      setTimeout(() => setCopyNotice(''), 1200);
+    } catch (e) {
+      setCopyNotice('Copy failed');
+      setTimeout(() => setCopyNotice(''), 1200);
+    }
+  };
 
   const responseCandidates = [
     node?.raw,
@@ -231,7 +270,7 @@ export const DetailsPanel = ({ node, onClose }) => {
       <div className="dp-header-section">
         <div className="dp-heading-line">
           <span className="dp-heading-icon" aria-hidden>{iconForType(nodeType)}</span>
-          <span className="dp-heading-text">{nodeType === 'domain' ? 'Domain' : 'Node'}: {nodeId}</span>
+          <span className="dp-heading-text">{nodeType === 'domain' ? 'Domain' : 'Node'}: {displayName}</span>
           <button type="button" className="dp-close" onClick={onClose} aria-label="Close details panel">×</button>
         </div>
         <div className="dp-status-line">
@@ -247,6 +286,17 @@ export const DetailsPanel = ({ node, onClose }) => {
         <div className="dp-meta-card"><div className="dp-meta-label">🌍 IP Address</div><div className="dp-meta-value" title={ipAddress}>{ipAddress}</div></div>
         <div className="dp-meta-card"><div className="dp-meta-label">⚡ Response Time</div><div className="dp-meta-value">{responseTime}</div></div>
         <div className="dp-meta-card"><div className="dp-meta-label">🔌 Connections</div><div className="dp-meta-value">{totalConnections}</div></div>
+        {scanFinishedAt ? (
+          <div className="dp-meta-card"><div className="dp-meta-label">⏱ Scan Completed</div><div className="dp-meta-value" title={scanFinishedAt}>{scanFinishedAt}</div></div>
+        ) : null}
+        {fullPath ? (
+          <div className="dp-meta-card dp-meta-card--full">
+            <div className="dp-meta-label">🧭 Full Path</div>
+            <div className="dp-meta-value dp-meta-value--full" title={fullPath}>{fullPath}</div>
+            <button type="button" className="dp-copy-btn" onClick={copyFullPath} title="Click to copy">Copy</button>
+            {copyNotice ? <div className="dp-copy-note">{copyNotice}</div> : null}
+          </div>
+        ) : null}
       </div>
 
       <nav className="dp-tabs" role="tablist">

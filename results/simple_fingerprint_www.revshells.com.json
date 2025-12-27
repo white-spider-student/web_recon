@@ -1,0 +1,33 @@
+{
+  "target": "www.revshells.com",
+  "probes": [
+    {
+      "url": "https://www.revshells.com",
+      "ok": false,
+      "error": "HTTPSConnectionPool(host='www.revshells.com', port=443): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x780e547910f0>: Failed to establish a new connection: [Errno -3] Temporary failure in name resolution'))",
+      "status_code": null,
+      "headers": null,
+      "title": null,
+      "redirects": null,
+      "body_snippet": null,
+      "resolved_ip": null,
+      "response_time_ms": null,
+      "content_length": null,
+      "tls_cert": null
+    },
+    {
+      "url": "http://www.revshells.com",
+      "ok": false,
+      "error": "HTTPConnectionPool(host='www.revshells.com', port=80): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x780e547911b0>: Failed to establish a new connection: [Errno -3] Temporary failure in name resolution'))",
+      "status_code": null,
+      "headers": null,
+      "title": null,
+      "redirects": null,
+      "body_snippet": null,
+      "resolved_ip": null,
+      "response_time_ms": null,
+      "content_length": null,
+      "tls_cert": null
+    }
+  ]
+}

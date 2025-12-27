@@ -4,12 +4,14 @@ const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const reportRoutes = require('./routes/report');
 
 const app = express();
 const PORT = 3001;
 
 app.use(bodyParser.json());
 app.use(cors());
+app.use('/api/report', reportRoutes);
 
 // Open DB
 const db = new sqlite3.Database(path.join(__dirname, 'data.db'), (err) => {
@@ -19,8 +21,8 @@ const db = new sqlite3.Database(path.join(__dirname, 'data.db'), (err) => {
   }
   console.log('Connected to SQLite database.');
   ensureSchema();
-  // Ensure nodes table has the meta columns we expect, then detect header/tech column names
-  ensureNodeColumns(() => detectSchemaColumns());
+  // Ensure websites/nodes tables have the meta columns we expect, then detect header/tech column names
+  ensureWebsiteColumns(() => ensureNodeColumns(() => detectSchemaColumns()));
 });
 
 // Detected column names (default to common names)
@@ -112,6 +114,32 @@ function ensureSchema() {
   db.run('CREATE INDEX IF NOT EXISTS idx_nodes_value ON nodes(value)');
 }
 
+// Ensure optional meta columns exist on websites table (safe ALTER TABLE)
+function ensureWebsiteColumns(cb) {
+  db.all("PRAGMA table_info('websites')", (err, cols) => {
+    if (err || !Array.isArray(cols)) return cb && cb();
+    const names = cols.map(c => c.name);
+    const adds = [];
+    if (!names.includes('scan_started_at')) adds.push('scan_started_at TEXT');
+    if (!names.includes('scan_finished_at')) adds.push('scan_finished_at TEXT');
+
+    if (adds.length === 0) {
+      return cb && cb();
+    }
+
+    let i = 0;
+    const next = () => {
+      if (i >= adds.length) return cb && cb();
+      const sql = `ALTER TABLE websites ADD COLUMN ${adds[i]}`;
+      db.run(sql, (aErr) => {
+        if (aErr && !/duplicate column/i.test(aErr.message)) console.error('Error adding column to websites:', aErr.message);
+        i++; next();
+      });
+    };
+    next();
+  });
+}
+
 // Ensure optional meta columns exist on nodes table (safe ALTER TABLE)
 function ensureNodeColumns(cb) {
   db.all("PRAGMA table_info('nodes')", (err, cols) => {
@@ -154,6 +182,7 @@ app.get('/websites', (req, res) => {
   });
 });
 
+
 // Create a new website
 app.post('/websites', (req, res) => {
   const { url, name } = req.body;
@@ -167,9 +196,15 @@ app.post('/websites', (req, res) => {
 app.get('/websites/:websiteId/nodes', async (req, res) => {
   const { websiteId } = req.params;
   try {
-    const nodesQuery = `SELECT id, value, type, status, size FROM nodes WHERE website_id = ?`;
+    const nodesQuery = `SELECT * FROM nodes WHERE website_id = ?`;
     const rawNodes = await new Promise((resolve, reject) => {
       db.all(nodesQuery, [websiteId], (err, rows) => err ? reject(err) : resolve(rows));
+    });
+    const websiteMeta = await new Promise((resolve) => {
+      db.get('SELECT scan_started_at, scan_finished_at FROM websites WHERE id = ? LIMIT 1', [websiteId], (wErr, row) => {
+        if (wErr) return resolve({});
+        resolve(row || {});
+      });
     });
 
     // Build nodes with headers and technologies using detected column names
@@ -181,8 +216,13 @@ app.get('/websites/:websiteId/nodes', async (req, res) => {
         value: row.value,
         status: row.status,
         size: row.size,
-  meta: {}
+        scan_started_at: websiteMeta.scan_started_at,
+        scan_finished_at: websiteMeta.scan_finished_at,
+        timestamp: row.created_at,
+        meta: {}
       };
+      if (websiteMeta.scan_started_at) node.meta.scan_started_at = websiteMeta.scan_started_at;
+      if (websiteMeta.scan_finished_at) node.meta.scan_finished_at = websiteMeta.scan_finished_at;
 
       // headers
       const hQuery = `SELECT ${headerKeyCol} as keycol, ${headerValueCol} as valcol FROM node_headers WHERE node_id = ?`;
@@ -295,9 +335,15 @@ app.get('/websites/:websiteId/nodes/:nodeId', async (req, res) => {
   const { websiteId, nodeId } = req.params;
   try {
     const nodeRow = await new Promise((resolve, reject) => {
-      db.get('SELECT id, value, type, status, size FROM nodes WHERE website_id = ? AND value = ? LIMIT 1', [websiteId, nodeId], (err, row) => err ? reject(err) : resolve(row));
+      db.get('SELECT * FROM nodes WHERE website_id = ? AND value = ? LIMIT 1', [websiteId, nodeId], (err, row) => err ? reject(err) : resolve(row));
     });
     if (!nodeRow) return res.status(404).json({ error: 'Node not found' });
+    const websiteMeta = await new Promise((resolve) => {
+      db.get('SELECT scan_started_at, scan_finished_at FROM websites WHERE id = ? LIMIT 1', [websiteId], (wErr, row) => {
+        if (wErr) return resolve({});
+        resolve(row || {});
+      });
+    });
 
     const node = {
       id: nodeRow.value,
@@ -306,8 +352,13 @@ app.get('/websites/:websiteId/nodes/:nodeId', async (req, res) => {
       value: nodeRow.value,
       status: nodeRow.status,
       size: nodeRow.size,
-  meta: {}
+      scan_started_at: websiteMeta.scan_started_at,
+      scan_finished_at: websiteMeta.scan_finished_at,
+      timestamp: nodeRow.created_at,
+      meta: {}
     };
+    if (websiteMeta.scan_started_at) node.meta.scan_started_at = websiteMeta.scan_started_at;
+    if (websiteMeta.scan_finished_at) node.meta.scan_finished_at = websiteMeta.scan_finished_at;
 
     const hQuery = `SELECT ${headerKeyCol} as keycol, ${headerValueCol} as valcol FROM node_headers WHERE node_id = ?`;
     const headers = await new Promise((resolve) => {

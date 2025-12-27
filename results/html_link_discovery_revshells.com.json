@@ -1,0 +1,1 @@
+{"tool": "html_link_discovery", "target": "revshells.com", "output": "TIMEOUT: Command '['/usr/bin/python3', '/home/mohammed/Desktop/test/web_recon/recon/html_link_discovery.py', 'revshells.com']' timed out after 90 seconds"}

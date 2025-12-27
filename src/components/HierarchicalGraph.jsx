@@ -7,6 +7,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   const containerRef = useRef(null);
   const fgRef = useRef(null);
   const suppressAutoFit = useRef(false);
+  const tooltipCacheRef = useRef(new Map());
   const [size, setSize] = useState({ width: 800, height: 520 });
   const [levels, setLevels] = useState(new Map());
   const [expandedNodes, setExpandedNodes] = useState(new Set());
@@ -37,7 +38,8 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       if (!data || !data.nodes) return 1;
       let mx = 1;
       data.nodes.forEach(n => {
-        const l = levels.get(n.id) ?? (n.type === 'domain' ? 1 : (n.type === 'subdomain' || n.type === 'directory' ? 2 : 3));
+        const fallbackLevel = (n.type === 'host' && n.role === 'root') ? 1 : ((n.type === 'host' && n.role === 'subdomain') || n.type === 'dir' ? 2 : 3);
+        const l = levels.get(n.id) ?? fallbackLevel;
         if (l > mx) mx = l;
       });
       return mx;
@@ -99,20 +101,33 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     if (!data?.nodes?.length || !fgRef.current) return;
 
     const fg = fgRef.current;
-    const root = data.nodes.find(n => n.type === 'domain');
+    const root = data.nodes.find(n => n.type === 'host' && n.role === 'root') || data.nodes.find(n => n.type === 'host');
     if (!root) return;
 
-    // Assign hierarchical levels (1 = root domain, 2 = subdomain/directory, 3 = endpoint/file)
+    // Assign hierarchical levels (prefer explicit node.level when present)
     const newLevels = new Map();
     data.nodes.forEach(node => {
-      switch(node.type) {
-        case 'domain': newLevels.set(node.id, 1); break;
-        case 'subdomain': newLevels.set(node.id, 2); break;
-        case 'directory': newLevels.set(node.id, 2); break;
-        case 'endpoint':
-        case 'file': newLevels.set(node.id, 3); break;
-        default: newLevels.set(node.id, 3);
+      if (Number.isFinite(node.level)) {
+        newLevels.set(node.id, node.level);
+        return;
       }
+      if (node.type === 'host' && node.role === 'root') {
+        newLevels.set(node.id, 1);
+        return;
+      }
+      if (node.type === 'host' && node.role === 'subdomain') {
+        newLevels.set(node.id, 2);
+        return;
+      }
+      if (node.type === 'dir') {
+        newLevels.set(node.id, 2);
+        return;
+      }
+      if (node.type === 'path' || node.type === 'file') {
+        newLevels.set(node.id, 3);
+        return;
+      }
+      newLevels.set(node.id, 3);
     });
     setLevels(newLevels);
   }, [data]);
@@ -308,12 +323,13 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     // If level-driven visibility mode is active, show nodes up to that level only
     if (maxVisibleLevel !== null) {
       data.nodes.forEach(n => {
-        const lvl = levels.get(n.id) ?? (n.type === 'domain' ? 1 : (n.type === 'subdomain' || n.type === 'directory' ? 2 : 3));
+        const fallbackLevel = (n.type === 'host' && n.role === 'root') ? 1 : ((n.type === 'host' && n.role === 'subdomain') || n.type === 'dir' ? 2 : 3);
+        const lvl = levels.get(n.id) ?? fallbackLevel;
         if (lvl <= maxVisibleLevel) visible.add(n.id);
       });
     } else {
-      // Show root domain and its immediate subdomain children by default
-      const root = data.nodes.find(n => n.type === 'domain');
+      // Show root host and its immediate subdomain children by default
+      const root = data.nodes.find(n => n.type === 'host' && n.role === 'root') || data.nodes.find(n => n.type === 'host');
       if (root) visible.add(root.id);
       (data.links || []).forEach(l => {
         if (l.type !== 'contains') return;
@@ -321,7 +337,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
         const tgt = typeof l.target === 'object' ? l.target.id : l.target;
         if (src === root?.id) {
           const childNode = data.nodes.find(nn => nn.id === tgt);
-          if (childNode && childNode.type === 'subdomain') visible.add(tgt);
+          if (childNode && childNode.type === 'host' && childNode.role === 'subdomain') visible.add(tgt);
         }
       });
     }
@@ -338,9 +354,9 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       return false;
     };
 
-    // Include endpoints and files only if they have an expanded ancestor
+    // Include path/file nodes only if they have an expanded ancestor
     data.nodes.forEach(n => {
-      if (n.type === 'endpoint' || n.type === 'file' || n.type === 'directory' || n.type === 'subdomain') {
+      if (n.type === 'dir' || n.type === 'path' || n.type === 'file') {
         if (maxVisibleLevel === null) {
           // normal mode: include only if ancestor expanded
           if (isAncestorExpanded(n.id)) visible.add(n.id);
@@ -354,7 +370,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     const visibleNodes = [];
     data.nodes.forEach(n => {
       if (visible.has(n.id)) {
-        n.level = n.type === 'domain' ? 1 : (n.type === 'subdomain' || n.type === 'directory' ? 2 : 3);
+        n.level = levels.get(n.id) ?? n.level;
         visibleNodes.push(n);
       }
     });
@@ -378,14 +394,15 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   const getNodeColor = useCallback((node) => {
     if (!node || !node.type) return '#9CA3AF';
     
+    if (node.type === 'host' && node.role === 'root') return '#DC2626';
+    if (node.type === 'host' && node.role === 'subdomain') return '#2563EB';
+    
     const colors = {
-      domain: '#DC2626',      // Red - Target domain (center)
-      subdomain: '#2563EB',   // Blue - Level 2
-      directory: '#059669',   // Green - Level 3  
-      endpoint: '#EA580C',    // Orange - Level 4
-      file: '#D97706',        // Amber - Level 4
-      port: '#7C3AED',        // Purple
-      service: '#0891B2',     // Cyan
+      dir: '#059669',   // Green - directory
+      path: '#EA580C',  // Orange - path
+      file: '#D97706',  // Amber - file
+      port: '#7C3AED',
+      service: '#0891B2'
     };
     
     return colors[node.type] || '#6B7280';
@@ -394,10 +411,9 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   // Get node size based on type and expansion state
   const getNodeSize = useCallback((node) => {
     const baseSizes = {
-      domain: 25,
-      subdomain: 18,
-      directory: 14,
-      endpoint: 12,
+      host: node.role === 'root' ? 25 : 18,
+      dir: 14,
+      path: 12,
       file: 12,
       port: 10,
       service: 10
@@ -447,42 +463,109 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     onNodeClick && onNodeClick(node, [node.id]);
   }, [data, expandToNode, focusOnNode, onNodeClick]);
   
-  // Generate rich tooltip content
-  const getTooltip = useCallback((node) => {
+  const parseUrlParts = useCallback((fullLabel, node) => {
+    const empty = {
+      protocol: '',
+      hostname: node?.hostname || '',
+      pathname: '',
+      filename: '',
+      extension: '',
+      query: '',
+      fragment: '',
+      depth: 0
+    };
+    if (!fullLabel) return empty;
+    const raw = String(fullLabel).trim();
+    if (!raw) return empty;
+    const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw);
+    if (!hasScheme && raw.startsWith('/')) {
+      const pathOnly = raw.split('#')[0];
+      const [pathPart, queryPart] = pathOnly.split('?');
+      const pathname = pathPart || '/';
+      const parts = pathname.split('/').filter(Boolean);
+      const filename = parts.length ? parts[parts.length - 1] : '';
+      const ext = filename.includes('.') ? filename.split('.').pop() : '';
+      return {
+        ...empty,
+        pathname,
+        filename: node?.type === 'file' ? filename : '',
+        extension: node?.type === 'file' ? ext : '',
+        query: queryPart || '',
+        fragment: raw.includes('#') ? raw.split('#').slice(1).join('#') : '',
+        depth: parts.length
+      };
+    }
+    let parsed;
+    try {
+      parsed = new URL(hasScheme ? raw : `http://${raw}`);
+    } catch (e) {
+      return empty;
+    }
+    const pathname = parsed.pathname || '/';
+    const parts = pathname.split('/').filter(Boolean);
+    const filename = parts.length ? parts[parts.length - 1] : '';
+    const ext = filename.includes('.') ? filename.split('.').pop() : '';
+    const query = parsed.search ? parsed.search.replace(/^\?/, '') : '';
+    const fragment = parsed.hash ? parsed.hash.replace(/^#/, '') : '';
+    return {
+      protocol: parsed.protocol ? parsed.protocol.replace(':', '') : '',
+      hostname: parsed.hostname || empty.hostname,
+      pathname,
+      filename: node?.type === 'file' ? filename : '',
+      extension: node?.type === 'file' ? ext : '',
+      query,
+      fragment,
+      depth: parts.length
+    };
+  }, []);
+
+  const escapeHtml = useCallback((value) => {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }, []);
+
+  const renderHoverCard = useCallback((node) => {
     if (!node) return '';
-    
-    const hasChildren = data?.links?.some(l => l.source === node.id && l.type === 'contains');
-    const childrenCount = data?.links?.filter(l => l.source === node.id && l.type === 'contains').length || 0;
-    const isExpanded = expandedNodes.has(node.id);
-    
-    return `<div style="background: #1F2937; color: white; padding: 14px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 280px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-      <div style="font-weight: bold; color: ${getNodeColor(node)}; margin-bottom: 10px; font-size: 14px;">${node.value || node.id}</div>
-      
-      <div style="margin-bottom: 6px; display: flex; justify-content: space-between;">
-        <span style="color: #9CA3AF; font-size: 12px;">Type:</span>
-        <span style="font-size: 12px; text-transform: capitalize;">${node.type}</span>
+    const key = `${node.id}:${node.fullLabel || node.value || ''}`;
+    const cached = tooltipCacheRef.current.get(key);
+    if (cached) return cached;
+
+    const parts = parseUrlParts(node.fullLabel || node.value || '', node);
+    const header = String(node.label || node.id || '').trim();
+    const headerText = header.length > 28 ? `${header.slice(0, 28)}…` : header;
+    const typeLabel = node.type === 'host' ? 'Host' : (node.type === 'dir' ? 'Dir' : (node.type === 'file' ? 'File' : 'Path'));
+    const extText = parts.extension ? parts.extension : '—';
+    const hostText = parts.hostname || '—';
+    const pathText = parts.pathname || '/';
+    const normalizedText = parts.protocol && parts.hostname ? `${parts.protocol}://${parts.hostname}${parts.pathname}${parts.query ? `?${parts.query}` : ''}${parts.fragment ? `#${parts.fragment}` : ''}` : '';
+
+    const html = `<div style="background: rgba(10, 14, 24, 0.88); color: #E2E8F0; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(148,163,184,0.18); box-shadow: 0 16px 32px rgba(0,0,0,0.45); backdrop-filter: blur(6px); max-width: 340px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+        <div style="font-weight:700; font-size:13px; color:${escapeHtml(getNodeColor(node))}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(headerText)}</div>
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.12em; padding:2px 8px; border-radius:8px; background:rgba(148,163,184,0.18); color:#CBD5F5;">${escapeHtml(typeLabel)}</div>
       </div>
-      
-      ${node.status ? `<div style="margin-bottom: 6px; display: flex; justify-content: space-between;">
-        <span style="color: #9CA3AF; font-size: 12px;">Status:</span>
-        <span style="color: ${node.status >= 200 && node.status < 300 ? '#10B981' : node.status >= 400 ? '#EF4444' : '#F59E0B'}; font-size: 12px; font-weight: 500;">${node.status}</span>
-      </div>` : ''}
-      
-      ${node.size ? `<div style="margin-bottom: 6px; display: flex; justify-content: space-between;">
-        <span style="color: #9CA3AF; font-size: 12px;">Size:</span>
-        <span style="font-size: 12px;">${formatBytes(node.size)}</span>
-      </div>` : ''}
-      
-      ${hasChildren ? `<div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #374151;">
-        <div style="font-size: 11px; color: #6B7280; margin-bottom: 4px;">
-          ${childrenCount} ${childrenCount === 1 ? 'child' : 'children'}
+      <div style="display:grid; grid-template-columns: 70px 1fr; gap:6px 10px; font-size:11px;">
+        <div style="color:#94A3B8;">Host</div>
+        <div style="color:#E2E8F0; text-align:right;">${escapeHtml(hostText)}</div>
+        <div style="color:#94A3B8;">Path</div>
+        <div style="color:#E2E8F0;">
+          <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; background:rgba(15,23,42,0.6); border:1px solid rgba(148,163,184,0.22); padding:6px 8px; border-radius:8px; max-height:72px; overflow:auto; word-break:break-word;">${escapeHtml(pathText)}</div>
         </div>
-        <div style="font-size: 11px; color: #3B82F6;">
-          Click to ${isExpanded ? 'collapse' : 'expand'}
-        </div>
-      </div>` : ''}
+        <div style="color:#94A3B8;">Extension</div>
+        <div style="color:#E2E8F0; text-align:right;">${escapeHtml(extText)}</div>
+        <div style="color:#94A3B8;">Depth</div>
+        <div style="color:#E2E8F0; text-align:right;">${escapeHtml(parts.depth)}</div>
+        ${normalizedText ? `<div style="color:#94A3B8;">Normalized</div>
+        <div style="color:#E2E8F0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:10px; word-break:break-all; user-select:text;">${escapeHtml(normalizedText)}</div>` : ''}
+      </div>
     </div>`;
-  }, [data, expandedNodes, getNodeColor]);
+    tooltipCacheRef.current.set(key, html);
+    return html;
+  }, [escapeHtml, getNodeColor, parseUrlParts]);
 
   // Format bytes utility
   const formatBytes = (bytes) => {
@@ -651,7 +734,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
         // Node styling
         nodeColor={getNodeColor}
         nodeVal={getNodeSize}
-        nodeLabel={getTooltip}
+        nodeLabel={renderHoverCard}
         
         // Node interactions
         onNodeClick={handleNodeClick}
@@ -764,8 +847,8 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
             } catch (e) {}
 
             // Draw compact expansion indicator (small circle with +/−)
-            // Skip indicator for the root domain node to avoid showing a misleading '+' on root
-            if (hasChildren && node.type !== 'domain') {
+            // Skip indicator for the root host node to avoid showing a misleading '+' on root
+            if (hasChildren && !(node.type === 'host' && node.role === 'root')) {
               ctx.save();
               const indicatorR = Math.max(8, nodeRadius * 0.55);
               const ix = node.x + nodeRadius - indicatorR;

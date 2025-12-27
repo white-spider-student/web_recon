@@ -37,7 +37,7 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
     if (!fgRef.current || !data?.nodes?.length) return;
 
     const fg = fgRef.current;
-    const rootNode = data.nodes.find(n => n.type === 'domain');
+    const rootNode = data.nodes.find(n => n.type === 'host' && n.role === 'root') || data.nodes.find(n => n.type === 'host');
     if (!rootNode) return;
 
     // Center force
@@ -116,10 +116,9 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
   const getNodeColor = (node) => {
     if (!node?.type) return '#bbb';
     switch(node.type) {
-      case 'domain': return 'rgba(255,255,255,0.95)';
-      case 'subdomain': return 'rgba(45,226,230,0.95)';
-      case 'directory': return 'rgba(59,130,246,0.95)';
-      case 'endpoint':
+      case 'host': return node.role === 'root' ? 'rgba(255,255,255,0.95)' : 'rgba(45,226,230,0.95)';
+      case 'dir': return 'rgba(59,130,246,0.95)';
+      case 'path':
       case 'file': return 'rgba(251,146,60,0.95)';
       default: return '#bbb';
     }
@@ -137,7 +136,7 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
         graphData={data}
         dagMode="radialout"
         dagLevelDistance={100}
-        nodeLabel={node => node.label || node.id}
+        nodeLabel={node => node.fullLabel || node.label || node.id}
         nodeRelSize={6}
         linkColor={link => {
           const sourceId = String(typeof link.source === 'object' ? link.source.id : link.source);
@@ -162,7 +161,7 @@ export const Graph = ({ data, onNodeClick, highlightedNodes = [], similarNodes =
         height={size.height}
         nodeCanvasObject={(node, ctx, globalScale) => {
           const label = node.label || node.id;
-          const fontSize = node.type === 'domain' ? 14 : 12;
+          const fontSize = node.type === 'host' && node.role === 'root' ? 14 : 12;
           ctx.font = `${fontSize}px Arial`;
           const nodeColor = getNodeColor(node);
           const isHighlighted = highlightedSet.has(String(node.id));
