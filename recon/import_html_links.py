@@ -14,6 +14,8 @@ from pathlib import Path
 import sqlite3
 from urllib.parse import urlparse, urlunparse
 
+from recon.url_classify import classify_url
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SERVER_DIR = PROJECT_ROOT / 'server'
 DB_PATH = SERVER_DIR / 'data.db'
@@ -39,7 +41,7 @@ def get_host(url_or_host: str) -> str:
     return s.lower()
 
 def normalize_url(u: str) -> str:
-    """Normalize a URL: lowercase host, strip fragments, collapse //, remove trailing slash except root."""
+    """Normalize a URL: lowercase host, keep query, strip fragments, collapse //, remove trailing slash except root."""
     try:
         p = urlparse(u.strip())
         scheme = p.scheme or 'http'
@@ -49,9 +51,8 @@ def normalize_url(u: str) -> str:
         path = re.sub(r'/+', '/', path)
         # remove fragment/query for node identity (we visualize path hierarchy)
         path = path if path.startswith('/') else '/' + path
-        # remove trailing slash for files; keep for pure directories at intermediate steps
-        # we keep raw path here; directory detection happens later
-        return urlunparse((scheme, host, path, '', '', ''))
+        query = p.query or ''
+        return urlunparse((scheme, host, path, '', query, ''))
     except Exception:
         return u.strip()
 
@@ -96,13 +97,13 @@ def get_nodes_map(db, website_id: int):
 def get_parent_node_id(db, website_id: int, host: str):
     # prefer subdomain node, else root domain node
     cur = db.cursor()
-    cur.execute('SELECT id FROM nodes WHERE website_id = ? AND value = ? LIMIT 1', (host,))
+    cur.execute('SELECT id FROM nodes WHERE website_id = ? AND value = ? LIMIT 1', (website_id, host))
     row = cur.fetchone()
     if row:
         return row[0]
     # try root apex
     apex = apex_of(host)
-    cur.execute('SELECT id FROM nodes WHERE website_id = ? AND value = ? LIMIT 1', (apex,))
+    cur.execute('SELECT id FROM nodes WHERE website_id = ? AND value = ? LIMIT 1', (website_id, apex))
     row = cur.fetchone()
     return row[0] if row else None
 
@@ -114,6 +115,19 @@ def insert_node(db, website_id: int, value: str, ntype: str, status=None, size=N
         return row[0]
     cur.execute('INSERT INTO nodes (website_id, value, type, status, size) VALUES (?, ?, ?, ?, ?)', (website_id, value, ntype, status, size))
     return cur.lastrowid
+
+def merge_details(db, node_id: int, patch: dict):
+    cur = db.cursor()
+    cur.execute('SELECT details FROM nodes WHERE id = ? LIMIT 1', (node_id,))
+    row = cur.fetchone()
+    details = {}
+    if row and row[0]:
+        try:
+            details = json.loads(row[0]) if isinstance(row[0], str) else dict(row[0])
+        except Exception:
+            details = {}
+    details.update(patch or {})
+    cur.execute('UPDATE nodes SET details = ? WHERE id = ?', (json.dumps(details), node_id))
 
 def insert_rel(db, src_id: int, tgt_id: int, rtype: str = 'contains'):
     cur = db.cursor()
@@ -134,7 +148,8 @@ def main():
 
     data = json.loads(json_path.read_text())
     discovered = data.get('discovered', {})
-    urls = discovered.get('urls', []) or []
+    page_urls = discovered.get('pages') or discovered.get('urls') or []
+    api_urls = discovered.get('api') or []
     dirs_by_host = discovered.get('directories_by_host', {}) or {}
 
     db = sqlite3.connect(str(DB_PATH))
@@ -162,8 +177,10 @@ def main():
                     insert_rel(db, prev_id, node_id, 'contains')
                     prev_id = node_id
 
-        # 2) From raw URLs (create directories per segment and final leaf)
-        for raw in urls:
+        # 2) From raw URLs (pages + api). Create directories per segment and final leaf.
+        for raw in page_urls:
+            if classify_url(raw) != "page":
+                continue
             nu = normalize_url(raw)
             p = urlparse(nu)
             host = (p.hostname or '').lower()
@@ -175,6 +192,12 @@ def main():
                 parent_id = insert_node(db, website_id, host, ntype)
 
             segs = split_path_segments(p.path or '/')
+            if not segs and p.query:
+                node_value = f"{host}/?{p.query}"
+                node_id = insert_node(db, website_id, node_value, 'endpoint')
+                insert_rel(db, parent_id, node_id, 'contains')
+                merge_details(db, node_id, {"link_type": "page"})
+                continue
             cumulative = ''
             prev_id = parent_id
             for i, seg in enumerate(segs):
@@ -188,9 +211,44 @@ def main():
                 node_id = insert_node(db, website_id, node_value, ntype)
                 insert_rel(db, prev_id, node_id, 'contains')
                 prev_id = node_id
+                if is_last:
+                    merge_details(db, node_id, {"link_type": "page"})
+
+        for raw in api_urls:
+            if classify_url(raw) != "api":
+                continue
+            nu = normalize_url(raw)
+            p = urlparse(nu)
+            host = (p.hostname or '').lower()
+            if not host:
+                continue
+            parent_id = get_parent_node_id(db, website_id, host)
+            if not parent_id:
+                ntype = 'subdomain' if host != apex_of(host) else 'domain'
+                parent_id = insert_node(db, website_id, host, ntype)
+
+            segs = split_path_segments(p.path or '/')
+            if not segs and p.query:
+                node_value = f"{host}/?{p.query}"
+                node_id = insert_node(db, website_id, node_value, 'endpoint')
+                insert_rel(db, parent_id, node_id, 'contains')
+                merge_details(db, node_id, {"link_type": "api"})
+                continue
+            cumulative = ''
+            prev_id = parent_id
+            for i, seg in enumerate(segs):
+                cumulative = cumulative + '/' + seg if cumulative else '/' + seg
+                node_value = f"{host}{cumulative}"
+                is_last = (i == len(segs) - 1)
+                ntype = 'endpoint' if is_last else 'directory'
+                node_id = insert_node(db, website_id, node_value, ntype)
+                insert_rel(db, prev_id, node_id, 'contains')
+                prev_id = node_id
+                if is_last:
+                    merge_details(db, node_id, {"link_type": "api"})
 
         db.commit()
-        print(f'Imported hierarchical paths from {len(urls)} URLs and {sum(len(v) for v in dirs_by_host.values())} directory hints into DB for {website_url}')
+        print(f'Imported hierarchical paths from {len(page_urls)} pages, {len(api_urls)} api endpoints, and {sum(len(v) for v in dirs_by_host.values())} directory hints into DB for {website_url}')
     finally:
         db.close()
 

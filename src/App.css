@@ -28,6 +28,236 @@ html,body,#root{
   overflow: hidden;
 }
 
+
+.scan-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scan-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d6f8f8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scan-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scan-status-chip {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(45, 226, 230, 0.2);
+  color: #9ff7f7;
+  border: 1px solid rgba(45, 226, 230, 0.4);
+}
+
+.scan-status-chip.good {
+  background: rgba(52, 211, 153, 0.2);
+  border-color: rgba(52, 211, 153, 0.5);
+  color: #b7ffe8;
+}
+
+.scan-status-chip.error {
+  background: rgba(255, 107, 107, 0.2);
+  border-color: rgba(255, 107, 107, 0.4);
+  color: #ffd1d1;
+}
+
+.scan-panel-close {
+  background: transparent;
+  border: none;
+  color: #9aa6b0;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.scan-panel-meta {
+  font-size: 11px;
+  color: #9aa6b0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scan-panel-running {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.scan-panel-running-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #7ad3ff;
+}
+
+.scan-panel-running-stage {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d6f8f8;
+}
+
+.scan-panel-running-message {
+  font-size: 11px;
+  color: #9aa6b0;
+}
+
+.scan-panel-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.scan-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9aa6b0;
+}
+
+.scan-step.active {
+  color: #e2f7f9;
+}
+
+.scan-step.done {
+  color: #7ad3ff;
+}
+
+.scan-step-icon {
+  width: 18px;
+  text-align: center;
+}
+
+.scan-panel-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scan-panel-log-toggle {
+  background: transparent;
+  border: none;
+  color: #7ad3ff;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scan-panel-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #9aa6b0;
+}
+
+.scan-panel-log-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+.scan-panel-collapsed-right {
+  position: fixed;
+  right: var(--details-panel-width, 0px);
+  top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px 0 0 10px;
+  background: rgba(13, 22, 30, 0.95);
+  border: 1px solid rgba(45, 226, 230, 0.25);
+  color: #9ff7f7;
+  font-size: 12px;
+  cursor: pointer;
+  z-index: 70;
+}
+
+.scan-panel-collapsed-dot {
+  width: 6px;
+  height: 6px;
+  background: #2de2e6;
+  border-radius: 50%;
+}
+
+.live-scan-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: -6px 0 14px;
+  border-radius: 10px;
+  background: rgba(13, 22, 30, 0.9);
+  border: 1px solid rgba(45, 226, 230, 0.25);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transform: translateY(-6px);
+  height: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease, height 0.2s ease;
+}
+
+.live-scan-bar.active {
+  opacity: 1;
+  transform: translateY(0);
+  height: auto;
+  pointer-events: auto;
+}
+
+.live-scan-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(45, 226, 230, 0.2);
+  border-top-color: var(--accent);
+  animation: scanSpin 0.8s linear infinite;
+  margin-top: 2px;
+}
+
+.live-scan-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.live-scan-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d6f8f8;
+}
+
+.live-scan-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.live-scan-log {
+  font-size: 11px;
+  color: #7ad3ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes scanSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .main-content{
   flex: 1;
   display: flex;

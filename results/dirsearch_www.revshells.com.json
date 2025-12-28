@@ -1,5 +1,0 @@
-
-STDERR:
-Usage: dirsearch.py [-u|--url] target [-e|--extensions] extensions [options]
-
-dirsearch.py: error: no such option: --format

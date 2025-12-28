@@ -15,6 +15,9 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
+from recon.url_classify import classify_url, should_graph
+from datetime import datetime
+
 FILE_EXTS = {
     'html','htm','php','asp','aspx','jsp','js','css','png','jpg','jpeg','gif','svg','ico',
     'pdf','xml','json','txt','csv','zip','gz','tar','rar','7z','mp4','woff','woff2','ttf','eot'
@@ -65,7 +68,9 @@ def add_edge(edges, src, tgt):
 
 
 def build_hierarchy(discovered):
-    urls = discovered.get('urls', []) or []
+    page_urls = discovered.get('pages') or discovered.get('urls', []) or []
+    api_urls = discovered.get('api') or []
+    urls = [u for u in list(page_urls) + list(api_urls) if should_graph(classify_url(u))]
     nodes = {}
     edges = {}
 
@@ -85,6 +90,11 @@ def build_hierarchy(discovered):
             add_node(nodes, host, 'subdomain' if host != apex_of(host) else 'domain')
 
             segs = split_segments(p.path or '/')
+            if not segs and p.query:
+                node_value = f"{host}/?{p.query}"
+                add_node(nodes, node_value, 'endpoint')
+                add_edge(edges, host, node_value)
+                continue
             prev = host
             cumulative = ''
             for i, seg in enumerate(segs):
@@ -102,6 +112,99 @@ def build_hierarchy(discovered):
         'relationships': list(edges.values())
     }
 
+def _utc_now_iso():
+    return datetime.utcnow().isoformat(timespec='seconds') + 'Z'
+
+def normalize_matched_url(raw: str) -> str:
+    try:
+        parsed = urlparse(raw)
+        if not parsed.hostname:
+            return ''
+        host = parsed.hostname.lower()
+        path = parsed.path or '/'
+        path = re.sub(r'/+', '/', path)
+        if len(path) > 1 and path.endswith('/'):
+            path = path[:-1]
+        return f"{host}{path}"
+    except Exception:
+        return ''
+
+def load_nmap_vuln(clean_dir: Path, target: str):
+    path = clean_dir / f"{target}_nmap_vuln.json"
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    hosts = data.get('hosts') or {}
+    host_findings = {}
+    for host, info in hosts.items():
+        ports = info.get('ports') or {}
+        hostnames = info.get('hostnames') or []
+        findings = []
+        for port_key, pdata in ports.items():
+            service = pdata.get('service')
+            port = port_key.split('/')[0] if port_key else ''
+            for cve in (pdata.get('cves') or []):
+                findings.append({
+                    'id': cve.get('id'),
+                    'cvss': cve.get('cvss'),
+                    'source': cve.get('source'),
+                    'url': cve.get('url'),
+                    'port': port,
+                    'service': service
+                })
+        if findings:
+            host_findings[host] = findings
+            for hostname in hostnames:
+                if hostname:
+                    host_findings[hostname] = findings
+    return host_findings
+
+def load_nuclei_vuln(clean_dir: Path, target: str):
+    path = clean_dir / f"{target}_nuclei.json"
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text())
+    return data.get('findings') or []
+
+def attach_vulns(nodes, target: str, clean_dir: Path):
+    nmap_by_host = load_nmap_vuln(clean_dir, target)
+    nuclei_findings = load_nuclei_vuln(clean_dir, target)
+    if not nmap_by_host and not nuclei_findings:
+        return nodes
+
+    host_nodes = [n for n in nodes if '/' not in n['value']]
+    path_nodes = [n for n in nodes if '/' in n['value']]
+    path_nodes.sort(key=lambda n: len(n['value']), reverse=True)
+
+    nuclei_by_host = {}
+    nuclei_by_path = {}
+    for finding in nuclei_findings:
+        matched = finding.get('url') or finding.get('matchedAt') or ''
+        normalized = normalize_matched_url(matched)
+        if not normalized:
+            continue
+        host = normalized.split('/')[0]
+        nuclei_by_host.setdefault(host, []).append(finding)
+        for node in path_nodes:
+            if normalized.startswith(node['value']):
+                nuclei_by_path.setdefault(node['value'], []).append(finding)
+
+    for node in nodes:
+        value = node.get('value') or node.get('id')
+        if not value:
+            continue
+        if '/' not in value:
+            node['vulns'] = {
+                'nmap': nmap_by_host.get(value, []),
+                'nuclei': nuclei_by_host.get(value, [])
+            }
+        else:
+            node['vulns'] = {
+                'nmap': [],
+                'nuclei': nuclei_by_path.get(value, [])
+            }
+    return nodes
+
 
 def main():
     if len(sys.argv) < 3:
@@ -117,8 +220,12 @@ def main():
         discovered = data.get('discovered') or {}
         target = data.get('target') or ''
         hierarchy = build_hierarchy(discovered)
+        clean_dir = inp.parent / 'clean'
+        if target:
+            hierarchy['nodes'] = attach_vulns(hierarchy['nodes'], target, clean_dir)
         out = {
             'website': {'url': target, 'name': target},
+            'generatedAt': _utc_now_iso(),
             **hierarchy
         }
         outp.parent.mkdir(parents=True, exist_ok=True)

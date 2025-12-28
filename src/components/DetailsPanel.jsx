@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import './DetailsPanel.css';
+import { ScanStepper } from './ScanStepper';
 
 const STATUS_MAP = {
   '2': { label: 'OK', tone: 'good' },
@@ -28,21 +29,53 @@ const formatStatus = (status) => {
   return { code: normalized, label, tone };
 };
 
-const extractHeaders = (node) => {
-  if (!node) return [];
-  if (Array.isArray(node.headers) && node.headers.length) {
-    return node.headers.map(({ key, value }) => ({
-      key: String(key || ''),
-      value: value == null ? '' : String(value)
-    }));
+const buildFullUrl = (node, scanContext) => {
+  const isHttp = (value) => /^https?:\/\//i.test(String(value || '').trim());
+  const sanitize = (value) => String(value || '').trim();
+  const normalizeBase = (value) => {
+    if (!value) return '';
+    const trimmed = sanitize(value);
+    if (isHttp(trimmed)) return trimmed.replace(/\/+$/, '');
+    return `https://${trimmed.replace(/^\/+/, '').replace(/\/+$/, '')}`;
+  };
+  const normalizePath = (value) => {
+    const trimmed = sanitize(value);
+    if (!trimmed) return '';
+    if (trimmed.startsWith('?')) return trimmed;
+    return `/${trimmed.replace(/^\/+/, '')}`;
+  };
+
+  // Examples:
+  // buildFullUrl({ url: "https://example.com/a" }) -> https://example.com/a
+  // buildFullUrl({ path: "/wp-content/themes" }, { domain: "www.waitbutwhy.com" }) -> https://www.waitbutwhy.com/wp-content/themes
+  // buildFullUrl({ value: "/login?next=/" }, { baseUrl: "https://example.com" }) -> https://example.com/login?next=/
+
+  const direct = sanitize(node?.url || node?.fullUrl || node?.href || '');
+  if (direct && isHttp(direct)) return direct;
+
+  const rawPath = sanitize(node?.path || node?.value || node?.fullLabel || '');
+  const path = rawPath && !isHttp(rawPath) ? rawPath : '';
+
+  const base = normalizeBase(scanContext?.baseUrl || scanContext?.domain || node?.hostname || node?.meta?.host || '');
+  if (!base) return null;
+
+  const normalizedPath = normalizePath(path || '');
+  if (!normalizedPath) return base;
+  return `${base}${normalizedPath}`;
+};
+
+const normalizeHttpUrl = (raw) => {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return null;
+  if (/^(javascript|data):/i.test(trimmed)) return null;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withScheme);
+    if (!/^https?:$/.test(parsed.protocol)) return null;
+    return parsed.toString();
+  } catch (e) {
+    return null;
   }
-  if (node.meta && node.meta.headers) {
-    return Object.entries(node.meta.headers).map(([key, value]) => ({
-      key: String(key || ''),
-      value: value == null ? '' : String(value)
-    }));
-  }
-  return [];
 };
 
 const extractTechnologies = (node) => {
@@ -53,9 +86,18 @@ const extractTechnologies = (node) => {
 };
 
 const extractVulnerabilities = (node) => {
-  if (!node) return [];
-  if (Array.isArray(node.vulnerabilities)) return node.vulnerabilities;
-  return [];
+  if (!node) return { nmap: [], nuclei: [] };
+  const meta = node.meta?.vulns || node.vulns || {};
+  const nmap = Array.isArray(meta.nmap) ? meta.nmap : [];
+  const nuclei = Array.isArray(meta.nuclei) ? meta.nuclei : [];
+  if (!nmap.length && Array.isArray(node.vulnerabilities)) {
+    const legacy = node.vulnerabilities.map((v) => ({
+      id: String(v),
+      source: 'legacy'
+    }));
+    return { nmap: legacy, nuclei };
+  }
+  return { nmap, nuclei };
 };
 
 const iconForType = (type) => {
@@ -73,14 +115,15 @@ const iconForType = (type) => {
   }
 };
 
-export const DetailsPanel = ({ node, onClose }) => {
-  const headers = useMemo(() => extractHeaders(node), [node]);
+export const DetailsPanel = ({ node, onClose, scan }) => {
   const technologies = useMemo(() => extractTechnologies(node), [node]);
   const vulnerabilities = useMemo(() => extractVulnerabilities(node), [node]);
 
-  const [showFullResponse, setShowFullResponse] = useState(false);
-  const [activeTab, setActiveTab] = useState('headers');
+  const [activeTab, setActiveTab] = useState('tech');
   const [copyNotice, setCopyNotice] = useState('');
+  const [urlNotice, setUrlNotice] = useState('');
+  const [showAllNmap, setShowAllNmap] = useState(false);
+  const [showAllNuclei, setShowAllNuclei] = useState(false);
   const [panelWidth, setPanelWidth] = useState(() => {
     if (typeof window !== 'undefined') {
       const stored = window.localStorage.getItem('detailsPanelWidth');
@@ -151,11 +194,13 @@ export const DetailsPanel = ({ node, onClose }) => {
   };
 
   useEffect(() => {
-    setShowFullResponse(false);
-  setActiveTab('headers');
+    setActiveTab('tech');
+    setShowAllNmap(false);
+    setShowAllNuclei(false);
+    setUrlNotice('');
   }, [node]);
 
-  if (!node) return null;
+  if (!node && !scan) return null;
 
   const statusInfo = formatStatus(node?.status);
   const responseTime = node?.responseTime ? `${node.responseTime} ms` : 'Unknown';
@@ -166,7 +211,12 @@ export const DetailsPanel = ({ node, onClose }) => {
   const server = node?.server || node?.meta?.server || 'Unknown';
   const port = node?.port || node?.meta?.port || '—';
   const scheme = node?.protocol || node?.scheme || node?.meta?.scheme || '—';
-  const fullPath = node?.fullLabel || node?.value || '';
+  const scanContext = {
+    baseUrl: scan?.baseUrl || scan?.target || '',
+    domain: scan?.domain || scan?.target || ''
+  };
+  const fullUrl = buildFullUrl(node, scanContext);
+  const fullUrlDisplay = fullUrl || 'URL unavailable';
   const scanFinishedAt = node?.scan_finished_at || node?.meta?.scan_finished_at || '';
   const getDisplayName = (nodeData) => {
     if (!nodeData) return 'Node details';
@@ -186,13 +236,13 @@ export const DetailsPanel = ({ node, onClose }) => {
   const totalConnections = (Array.isArray(node?.links) ? node.links.length : 0) +
     (Array.isArray(node?.edges) ? node.edges.length : 0);
   const copyFullPath = async () => {
-    if (!fullPath) return;
+    if (!fullUrl) return;
     try {
       if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(fullPath);
+        await navigator.clipboard.writeText(fullUrl);
       } else {
         const ta = document.createElement('textarea');
-        ta.value = fullPath;
+        ta.value = fullUrl;
         ta.setAttribute('readonly', 'true');
         ta.style.position = 'absolute';
         ta.style.left = '-9999px';
@@ -209,44 +259,94 @@ export const DetailsPanel = ({ node, onClose }) => {
     }
   };
 
-  const responseCandidates = [
-    node?.raw,
-    node?.response,
-    node?.responseBody,
-    node?.body,
-    node?.meta?.raw,
-    node?.meta?.rawResponse,
-    node?.meta?.raw_response,
-    node?.meta?.response,
-    node?.meta?.responseBody,
-    node?.meta?.response_body,
-    node?.meta?.body,
-    node?.meta?.payload
-  ].filter((value) => typeof value === 'string' && value.trim().length > 0);
+  const openFullPath = () => {
+    if (!fullUrl) {
+      setUrlNotice('URL unavailable');
+      setTimeout(() => setUrlNotice(''), 1400);
+      return;
+    }
+    const normalized = normalizeHttpUrl(fullUrl);
+    if (!normalized) {
+      setUrlNotice('Invalid URL');
+      setTimeout(() => setUrlNotice(''), 1400);
+      return;
+    }
+    window.open(normalized, '_blank', 'noopener,noreferrer');
+  };
 
-  const rawResponseText = responseCandidates.length
-    ? responseCandidates[0].trim()
-    : ((headers.length || statusInfo?.code) ? (() => {
-      const lines = [];
-      if (statusInfo?.code) {
-        lines.push(`HTTP ${statusInfo.code} ${statusInfo.label}`);
+  const copyValue = async (value) => {
+    if (!value) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(String(value));
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = String(value);
+        ta.setAttribute('readonly', 'true');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
       }
-      headers.forEach(({ key, value }) => {
-        lines.push(`${(key || 'Header')}: ${(value || '').trim()}`);
-      });
-      lines.push('');
-      lines.push('-- body not captured --');
-      return lines.join('\n');
-    })() : '');
-
-  const hasRawResponse = rawResponseText.trim().length > 0;
+      setCopyNotice('Copied');
+      setTimeout(() => setCopyNotice(''), 1200);
+    } catch (e) {
+      setCopyNotice('Copy failed');
+      setTimeout(() => setCopyNotice(''), 1200);
+    }
+  };
 
   // Tabs
   const tabs = [
-    { key: 'headers', label: `HTTP Headers${headers.length ? ` (${headers.length})` : ''}` },
     { key: 'tech', label: 'Technologies' },
-    { key: 'security', label: 'Security Findings' }
+    { key: 'security', label: 'Vulnerabilities' }
   ];
+
+  const nmapFindings = Array.isArray(vulnerabilities.nmap) ? vulnerabilities.nmap : [];
+  const nucleiFindings = Array.isArray(vulnerabilities.nuclei) ? vulnerabilities.nuclei : [];
+
+  const cvssToSeverity = (cvss) => {
+    const score = Number(cvss);
+    if (Number.isNaN(score)) return null;
+    if (score >= 9.0) return 'critical';
+    if (score >= 7.0) return 'high';
+    if (score >= 4.0) return 'medium';
+    if (score > 0) return 'low';
+    return null;
+  };
+
+  const severityRank = (sev) => {
+    switch (String(sev || '').toLowerCase()) {
+      case 'critical': return 4;
+      case 'high': return 3;
+      case 'medium': return 2;
+      case 'low': return 1;
+      default: return 0;
+    }
+  };
+
+  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+  nmapFindings.forEach((f) => {
+    const sev = cvssToSeverity(f?.cvss);
+    if (sev && counts[sev] != null) counts[sev] += 1;
+  });
+  nucleiFindings.forEach((f) => {
+    const sev = String(f?.severity || '').toLowerCase();
+    if (counts[sev] != null) counts[sev] += 1;
+  });
+
+  const sortedNmap = [...nmapFindings].sort((a, b) => {
+    const aScore = Number(a?.cvss) || 0;
+    const bScore = Number(b?.cvss) || 0;
+    return bScore - aScore;
+  });
+
+  const sortedNuclei = [...nucleiFindings].sort((a, b) => severityRank(b?.severity) - severityRank(a?.severity));
+
+  const nmapVisible = showAllNmap ? sortedNmap : sortedNmap.slice(0, 20);
+  const nucleiVisible = showAllNuclei ? sortedNuclei : sortedNuclei.slice(0, 20);
 
   return (
     <aside className="details-panel dp-panel" style={{ width: panelWidth }}>
@@ -267,87 +367,162 @@ export const DetailsPanel = ({ node, onClose }) => {
           }
         }}
       />
-      <div className="dp-header-section">
-        <div className="dp-heading-line">
-          <span className="dp-heading-icon" aria-hidden>{iconForType(nodeType)}</span>
-          <span className="dp-heading-text">{nodeType === 'domain' ? 'Domain' : 'Node'}: {displayName}</span>
-          <button type="button" className="dp-close" onClick={onClose} aria-label="Close details panel">×</button>
-        </div>
-        <div className="dp-status-line">
-          <span className={`dp-status-pill ${statusInfo.tone}`}>{statusInfo.code} {statusInfo.label}</span>
-          <span className="dp-status-meta">Response Size: {responseSize}</span>
-          <span className="dp-status-meta">Last Seen: {lastSeen}</span>
-          <button type="button" className="dp-reset-width" onClick={resetWidth} title="Reset width">Reset</button>
-        </div>
-      </div>
-
-      <div className="dp-meta-cards">
-        <div className="dp-meta-card"><div className="dp-meta-label">🖥 Server</div><div className="dp-meta-value" title={server}>{server}</div></div>
-        <div className="dp-meta-card"><div className="dp-meta-label">🌍 IP Address</div><div className="dp-meta-value" title={ipAddress}>{ipAddress}</div></div>
-        <div className="dp-meta-card"><div className="dp-meta-label">⚡ Response Time</div><div className="dp-meta-value">{responseTime}</div></div>
-        <div className="dp-meta-card"><div className="dp-meta-label">🔌 Connections</div><div className="dp-meta-value">{totalConnections}</div></div>
-        {scanFinishedAt ? (
-          <div className="dp-meta-card"><div className="dp-meta-label">⏱ Scan Completed</div><div className="dp-meta-value" title={scanFinishedAt}>{scanFinishedAt}</div></div>
-        ) : null}
-        {fullPath ? (
-          <div className="dp-meta-card dp-meta-card--full">
-            <div className="dp-meta-label">🧭 Full Path</div>
-            <div className="dp-meta-value dp-meta-value--full" title={fullPath}>{fullPath}</div>
-            <button type="button" className="dp-copy-btn" onClick={copyFullPath} title="Click to copy">Copy</button>
-            {copyNotice ? <div className="dp-copy-note">{copyNotice}</div> : null}
+      {node && (
+        <div className="dp-header-section">
+          <div className="dp-heading-line">
+            <span className="dp-heading-icon" aria-hidden>{iconForType(nodeType)}</span>
+            <span className="dp-heading-text">{nodeType === 'domain' ? 'Domain' : 'Node'}: {displayName}</span>
+            <button type="button" className="dp-close" onClick={onClose} aria-label="Close details panel">×</button>
           </div>
-        ) : null}
-      </div>
+          <div className="dp-status-line">
+            <span className={`dp-status-pill ${statusInfo.tone}`}>{statusInfo.code} {statusInfo.label}</span>
+            <span className="dp-status-meta">Response Size: {responseSize}</span>
+            <span className="dp-status-meta">Last Seen: {lastSeen}</span>
+            <span className="dp-status-meta dp-status-meta--nowrap" title={server}>
+              <span className="dp-status-label">Server:</span> {server}
+            </span>
+            <span className="dp-status-meta dp-status-meta--nowrap" title={ipAddress}>
+              <span className="dp-status-label">IP:</span> {ipAddress}
+            </span>
+            <button type="button" className="dp-reset-width" onClick={resetWidth} title="Reset width">Reset</button>
+          </div>
+        </div>
+      )}
 
-      <nav className="dp-tabs" role="tablist">
-        {tabs.map(t => (
-          <button
-            key={t.key}
-            role="tab"
-            aria-selected={activeTab === t.key}
-            className={`dp-tab ${activeTab === t.key ? 'active' : ''}`}
-            onClick={() => setActiveTab(t.key)}
-          >{t.label}</button>
-        ))}
-      </nav>
-
-      <div className="dp-tab-content">
-        {/* Overview tab removed per user request */}
-
-        {activeTab === 'headers' && (
-          <div className="dp-headers-tab">
-            {headers.length ? (
-              <div className="dp-header-list">
-                {headers.map(({ key, value }) => {
-                  const headerKey = key || 'Unnamed header';
-                  const headerValue = value || '—';
-                  return (
-                    <div className="dp-header-item" key={`${headerKey}-${headerValue}`}>
-                      <div className="dp-header-top"><span className="dp-header-name" title={headerKey}>{headerKey}</span></div>
-                      <span className="dp-header-value" title={headerValue}>{headerValue}</span>
-                    </div>
-                  );
-                })}
+      <div className="dp-scroll">
+        {scan ? <ScanStepper scan={scan} onClose={scan.onClose} /> : null}
+        {node && (
+          <div className="dp-meta-cards">
+            {node ? (
+              <div className="dp-meta-card dp-meta-card--full">
+                <div className="dp-meta-label">🧭 Full URL</div>
+                <div className="dp-meta-value dp-meta-value--full" title={fullUrlDisplay}>{fullUrlDisplay}</div>
+                <div className="dp-meta-actions">
+                  <button type="button" className="dp-copy-btn" onClick={copyFullPath} aria-label="Copy URL" title="Copy URL" disabled={!fullUrl}>Copy</button>
+                  <button type="button" className="dp-copy-btn" onClick={openFullPath} aria-label="Open URL" title="Open URL" disabled={!fullUrl}>Open</button>
+                </div>
+                {copyNotice ? <div className="dp-copy-note">{copyNotice}</div> : null}
+                {urlNotice ? <div className="dp-copy-note">{urlNotice}</div> : null}
               </div>
-            ) : <div className="dp-empty">No headers detected</div>}
-            {hasRawResponse && showFullResponse && <pre className="dp-response-body" aria-label="HTTP response dump">{rawResponseText}</pre>}
-            {hasRawResponse && (
-              <button type="button" className="dp-ghost-button dp-response-toggle" onClick={() => setShowFullResponse(p=>!p)} aria-expanded={showFullResponse}>{showFullResponse ? 'Hide raw' : 'Show raw'}</button>
-            )}
+            ) : null}
           </div>
         )}
 
+        {node && (
+          <nav className="dp-tabs" role="tablist">
+            {tabs.map(t => (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={activeTab === t.key}
+                className={`dp-tab ${activeTab === t.key ? 'active' : ''}`}
+                onClick={() => setActiveTab(t.key)}
+              >{t.label}</button>
+            ))}
+          </nav>
+        )}
+
+        <div className="dp-tab-content">
+        {/* Overview tab removed per user request */}
+
         {activeTab === 'tech' && (
           <div className="dp-tech-tab">
-            {technologies.length ? <ul className="dp-chip-list">{technologies.map(t => <li key={t}>{t}</li>)}</ul> : <div className="dp-empty">No technologies identified</div>}
+            {technologies.length ? <ul className="dp-chip-list">{technologies.map(t => <li key={t}>{t}</li>)}</ul> : null}
           </div>
         )}
 
         {activeTab === 'security' && (
           <div className="dp-security-tab">
-            {vulnerabilities.length ? <ul className="dp-list">{vulnerabilities.map((v,i)=><li key={i}>{v}</li>)}</ul> : <div className="dp-empty">No known vulnerabilities</div>}
+            <div className="dp-vuln-summary">
+              <div className="dp-vuln-count"><span>Critical</span><strong>{counts.critical}</strong></div>
+              <div className="dp-vuln-count"><span>High</span><strong>{counts.high}</strong></div>
+              <div className="dp-vuln-count"><span>Medium</span><strong>{counts.medium}</strong></div>
+              <div className="dp-vuln-count"><span>Low</span><strong>{counts.low}</strong></div>
+            </div>
+
+            <section className="dp-vuln-section">
+              <div className="dp-vuln-header">
+                <h4>Nmap Findings</h4>
+                <span className="dp-vuln-meta">{nmapFindings.length} total</span>
+              </div>
+              {nmapFindings.length ? (
+                <div className="dp-vuln-list">
+                  {nmapVisible.map((f, idx) => (
+                    <div className="dp-vuln-card" key={`${f?.id || 'nmap'}-${idx}`}>
+                      <div className="dp-vuln-main">
+                        {f?.id ? (
+                          <a className="dp-vuln-id" href={f?.url || `https://nvd.nist.gov/vuln/detail/${f.id}`} target="_blank" rel="noreferrer">{f.id}</a>
+                        ) : (
+                          <span className="dp-vuln-id">Unknown CVE</span>
+                        )}
+                        {f?.cvss != null && <span className={`dp-vuln-score sev-${cvssToSeverity(f?.cvss) || 'none'}`}>CVSS {f.cvss}</span>}
+                      </div>
+                      <div className="dp-vuln-sub">
+                        <span>{f?.service || 'Unknown service'}</span>
+                        {f?.port && <span>Port {f.port}</span>}
+                      </div>
+                      <div className="dp-vuln-actions">
+                        <button type="button" className="dp-copy-button" onClick={() => copyValue(f?.id)}>Copy CVE</button>
+                        {f?.url && <a className="dp-link-button" href={f.url} target="_blank" rel="noreferrer">View</a>}
+                      </div>
+                    </div>
+                  ))}
+                  {sortedNmap.length > 20 && (
+                    <button type="button" className="dp-ghost-button" onClick={() => setShowAllNmap((prev) => !prev)}>
+                      {showAllNmap ? 'Show top 20' : 'Show all'}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="dp-empty">No nmap vulnerabilities detected</div>
+              )}
+            </section>
+
+            <section className="dp-vuln-section">
+              <div className="dp-vuln-header">
+                <h4>Nuclei Findings</h4>
+                <span className="dp-vuln-meta">{nucleiFindings.length} total</span>
+              </div>
+              {nucleiFindings.length ? (
+                <div className="dp-vuln-list">
+                  {nucleiVisible.map((f, idx) => (
+                    <div className="dp-vuln-card" key={`${f?.template || 'nuclei'}-${idx}`}>
+                      <div className="dp-vuln-main">
+                        {Array.isArray(f?.refs) && f.refs.length ? (
+                          <a className="dp-vuln-id" href={f.refs[0]} target="_blank" rel="noreferrer">
+                            {f?.template || f?.cve || 'Unknown template'}
+                          </a>
+                        ) : (
+                          <span className="dp-vuln-id">{f?.template || f?.cve || 'Unknown template'}</span>
+                        )}
+                        {f?.severity && <span className={`dp-vuln-score sev-${String(f.severity).toLowerCase()}`}>{String(f.severity).toUpperCase()}</span>}
+                      </div>
+                      <div className="dp-vuln-sub">
+                        <span>{f?.name || 'Unnamed template'}</span>
+                        {f?.url && <span title={f.url}>{f.url}</span>}
+                      </div>
+                      <div className="dp-vuln-actions">
+                        <button type="button" className="dp-copy-button" onClick={() => copyValue(f?.template || f?.cve)}>Copy ID</button>
+                        {f?.url && <button type="button" className="dp-copy-button" onClick={() => copyValue(f.url)}>Copy URL</button>}
+                        {Array.isArray(f?.refs) && f.refs.length ? (
+                          <a className="dp-link-button" href={f.refs[0]} target="_blank" rel="noreferrer">Reference</a>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                  {sortedNuclei.length > 20 && (
+                    <button type="button" className="dp-ghost-button" onClick={() => setShowAllNuclei((prev) => !prev)}>
+                      {showAllNuclei ? 'Show top 20' : 'Show all'}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="dp-empty">No nuclei findings detected</div>
+              )}
+            </section>
           </div>
         )}
+        </div>
       </div>
     </aside>
   );

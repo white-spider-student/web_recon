@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
 const reportRoutes = require('./routes/report');
+const { startScan, cancelScan } = require('./scanRunner');
 
 const app = express();
 const PORT = 3001;
@@ -21,8 +22,20 @@ const db = new sqlite3.Database(path.join(__dirname, 'data.db'), (err) => {
   }
   console.log('Connected to SQLite database.');
   ensureSchema();
-  // Ensure websites/nodes tables have the meta columns we expect, then detect header/tech column names
-  ensureWebsiteColumns(() => ensureNodeColumns(() => detectSchemaColumns()));
+  // Ensure websites/nodes/scans tables have the meta columns we expect, then detect header/tech column names
+  ensureWebsiteColumns(() =>
+    ensureNodeColumns(() =>
+      ensureScansColumns(() =>
+        ensureScanProgressTable(() =>
+          ensureScanStagesTable(() =>
+            ensureScanLogsTable(() =>
+              backfillLegacyScans(() => detectSchemaColumns())
+            )
+          )
+        )
+      )
+    )
+  );
 });
 
 // Detected column names (default to common names)
@@ -112,6 +125,159 @@ function ensureSchema() {
   db.run('CREATE INDEX IF NOT EXISTS idx_nodes_website_id ON nodes(website_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type)');
   db.run('CREATE INDEX IF NOT EXISTS idx_nodes_value ON nodes(value)');
+
+  // Create scans table
+  db.run(`CREATE TABLE IF NOT EXISTS scans (
+    scan_id TEXT PRIMARY KEY,
+    website_id INTEGER,
+    target TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    cancelled_at TEXT,
+    last_update_at TEXT,
+    status TEXT,
+    options_json TEXT,
+    error TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (website_id) REFERENCES websites(id) ON DELETE SET NULL
+  )`);
+  db.run('CREATE INDEX IF NOT EXISTS idx_scans_target ON scans(target)');
+}
+
+function ensureScansColumns(cb) {
+  db.all("PRAGMA table_info('scans')", (err, cols) => {
+    if (err || !Array.isArray(cols)) return cb && cb();
+    const names = cols.map(c => c.name);
+    const adds = [];
+    if (!names.includes('started_at')) adds.push('started_at TEXT');
+    if (!names.includes('finished_at')) adds.push('finished_at TEXT');
+    if (!names.includes('status')) adds.push('status TEXT');
+    if (!names.includes('cancelled_at')) adds.push('cancelled_at TEXT');
+    if (!names.includes('last_update_at')) adds.push('last_update_at TEXT');
+    if (!names.includes('target')) adds.push('target TEXT');
+    if (!names.includes('website_id')) adds.push('website_id INTEGER');
+    if (!names.includes('options_json')) adds.push('options_json TEXT');
+    if (!names.includes('error')) adds.push('error TEXT');
+
+    if (adds.length === 0) {
+      if (names.includes('started_at')) {
+        db.run('CREATE INDEX IF NOT EXISTS idx_scans_started_at ON scans(started_at)');
+      }
+      return cb && cb();
+    }
+
+    let i = 0;
+    const next = () => {
+      if (i >= adds.length) return cb && cb();
+      const sql = `ALTER TABLE scans ADD COLUMN ${adds[i]}`;
+      db.run(sql, (aErr) => {
+        if (aErr && !/duplicate column/i.test(aErr.message)) console.error('Error adding column to scans:', aErr.message);
+        i++; next();
+      });
+    };
+    next();
+    if (names.includes('started_at') || adds.some(a => a.startsWith('started_at'))) {
+      db.run('CREATE INDEX IF NOT EXISTS idx_scans_started_at ON scans(started_at)');
+    }
+  });
+}
+
+function ensureScanProgressTable(cb) {
+  db.run(`CREATE TABLE IF NOT EXISTS scan_progress (
+    scan_id TEXT PRIMARY KEY,
+    status TEXT,
+    message TEXT,
+    stage TEXT,
+    stage_label TEXT,
+    current_target TEXT,
+    log_tail TEXT,
+    updated_at TEXT
+  )`, (err) => {
+    if (err) console.error('Error creating scan_progress table:', err.message);
+    ensureScanProgressColumns(cb);
+  });
+}
+
+function ensureScanStagesTable(cb) {
+  db.run(`CREATE TABLE IF NOT EXISTS scan_stages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id TEXT NOT NULL,
+    stage_key TEXT NOT NULL,
+    label TEXT,
+    status TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    duration_seconds INTEGER,
+    UNIQUE(scan_id, stage_key)
+  )`, (err) => {
+    if (err) console.error('Error creating scan_stages table:', err.message);
+    db.run('CREATE INDEX IF NOT EXISTS idx_scan_stages_scan_id ON scan_stages(scan_id)', () => {
+      if (cb) cb();
+    });
+  });
+}
+
+function ensureScanLogsTable(cb) {
+  db.run(`CREATE TABLE IF NOT EXISTS scan_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id TEXT NOT NULL,
+    ts TEXT,
+    line TEXT
+  )`, (err) => {
+    if (err) console.error('Error creating scan_logs table:', err.message);
+    db.run('CREATE INDEX IF NOT EXISTS idx_scan_logs_scan_id ON scan_logs(scan_id)', () => {
+      if (cb) cb();
+    });
+  });
+}
+
+function ensureScanProgressColumns(cb) {
+  db.all("PRAGMA table_info('scan_progress')", (err, cols) => {
+    if (err || !Array.isArray(cols)) return cb && cb();
+    const names = cols.map(c => c.name);
+    const adds = [];
+    if (!names.includes('stage')) adds.push('stage TEXT');
+    if (!names.includes('stage_label')) adds.push('stage_label TEXT');
+    if (!names.includes('current_target')) adds.push('current_target TEXT');
+    if (!names.includes('log_tail')) adds.push('log_tail TEXT');
+    if (adds.length === 0) return cb && cb();
+    let i = 0;
+    const next = () => {
+      if (i >= adds.length) return cb && cb();
+      const sql = `ALTER TABLE scan_progress ADD COLUMN ${adds[i]}`;
+      db.run(sql, (aErr) => {
+        if (aErr && !/duplicate column/i.test(aErr.message)) console.error('Error adding column to scan_progress:', aErr.message);
+        i++; next();
+      });
+    };
+    next();
+  });
+}
+
+function backfillLegacyScans(cb) {
+  db.all('SELECT id, url, scan_started_at, scan_finished_at FROM websites', [], (err, rows) => {
+    if (err || !Array.isArray(rows)) return cb && cb();
+    const inserts = rows.map(r => ({
+      website_id: r.id,
+      target: r.url,
+      started_at: r.scan_started_at || null,
+      finished_at: r.scan_finished_at || null,
+      status: r.scan_finished_at ? 'completed' : (r.scan_started_at ? 'running' : 'completed'),
+      scan_id: `legacy-${r.id}`
+    }));
+    if (!inserts.length) return cb && cb();
+    let i = 0;
+    const next = () => {
+      if (i >= inserts.length) return cb && cb();
+      const s = inserts[i];
+      db.run(
+        'INSERT OR IGNORE INTO scans (scan_id, website_id, target, started_at, finished_at, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [s.scan_id, s.website_id, s.target, s.started_at, s.finished_at, s.status],
+        () => { i++; next(); }
+      );
+    };
+    next();
+  });
 }
 
 // Ensure optional meta columns exist on websites table (safe ALTER TABLE)
@@ -153,6 +319,7 @@ function ensureNodeColumns(cb) {
     if (!names.includes('tls_cert')) adds.push('tls_cert TEXT');
     if (!names.includes('dirsearch_count')) adds.push('dirsearch_count INTEGER');
     if (!names.includes('wappalyzer')) adds.push('wappalyzer TEXT');
+    if (!names.includes('details')) adds.push('details TEXT');
 
     if (adds.length === 0) {
       return cb && cb();
@@ -173,6 +340,111 @@ function ensureNodeColumns(cb) {
 }
 
 // API Endpoints
+
+async function fetchWebsiteGraphData(websiteId) {
+  const websiteMeta = await new Promise((resolve) => {
+    db.get('SELECT scan_started_at, scan_finished_at FROM websites WHERE id = ? LIMIT 1', [websiteId], (wErr, row) => {
+      if (wErr) return resolve({});
+      resolve(row || {});
+    });
+  });
+
+  const nodesQuery = `SELECT * FROM nodes WHERE website_id = ?`;
+  const rawNodes = await new Promise((resolve, reject) => {
+    db.all(nodesQuery, [websiteId], (err, rows) => err ? reject(err) : resolve(rows || []));
+  });
+
+  const nodes = await Promise.all(rawNodes.map(async (row) => {
+    const node = {
+      id: row.value,
+      group: row.type || 'unknown',
+      type: row.type || 'unknown',
+      value: row.value,
+      status: row.status,
+      size: row.size,
+      scan_started_at: websiteMeta.scan_started_at,
+      scan_finished_at: websiteMeta.scan_finished_at,
+      timestamp: row.created_at,
+      meta: {}
+    };
+    if (websiteMeta.scan_started_at) node.meta.scan_started_at = websiteMeta.scan_started_at;
+    if (websiteMeta.scan_finished_at) node.meta.scan_finished_at = websiteMeta.scan_finished_at;
+
+    const hQuery = `SELECT ${headerKeyCol} as keycol, ${headerValueCol} as valcol FROM node_headers WHERE node_id = ?`;
+    const headers = await new Promise((resolve) => {
+      db.all(hQuery, [row.id], (hErr, hRows) => {
+        if (hErr) {
+          console.error('Error loading headers for node', row.id, hErr.message);
+          return resolve([]);
+        }
+        resolve(hRows || []);
+      });
+    });
+    node.meta.headers = {};
+    node.headers = [];
+    headers.forEach(h => {
+      if (h.keycol != null) node.meta.headers[String(h.keycol)] = h.valcol == null ? '' : String(h.valcol);
+      node.headers.push({ key: h.keycol, value: h.valcol });
+    });
+
+    const tQuery = `SELECT ${techCol} as techcol FROM node_technologies WHERE node_id = ?`;
+    const techs = await new Promise((resolve) => {
+      db.all(tQuery, [row.id], (tErr, tRows) => {
+        if (tErr) {
+          console.error('Error loading technologies for node', row.id, tErr.message);
+          return resolve([]);
+        }
+        resolve((tRows || []).map(r => r.techcol));
+      });
+    });
+    node.meta.technologies = techs;
+    node.technologies = techs;
+
+    try {
+      if (row.ip) node.meta.ip = row.ip;
+      if (row.response_time_ms != null) node.meta.response_time_ms = row.response_time_ms;
+      if (row.title) node.meta.title = row.title;
+      if (row.dirsearch_count != null) node.meta.dirsearch_count = row.dirsearch_count;
+      if (row.ports) {
+        try { node.meta.ports = JSON.parse(row.ports); } catch (e) { node.meta.ports = Array.isArray(row.ports) ? row.ports : [row.ports]; }
+      }
+      if (row.tls_cert) {
+        try { node.meta.tls_cert = JSON.parse(row.tls_cert); } catch (e) { node.meta.tls_cert = row.tls_cert; }
+      }
+      if (row.wappalyzer) {
+        try { node.meta.wappalyzer = JSON.parse(row.wappalyzer); } catch (e) { node.meta.wappalyzer = row.wappalyzer; }
+      }
+    } catch (e) { /* ignore */ }
+
+    if (row.details) {
+      try {
+        const details = typeof row.details === 'string' ? JSON.parse(row.details) : row.details;
+        if (details && typeof details === 'object') {
+          for (const k of Object.keys(details)) {
+            if (node.meta[k] === undefined) node.meta[k] = details[k];
+          }
+        }
+      } catch (e) {
+        // ignore malformed JSON
+      }
+    }
+
+    return node;
+  }));
+
+  const relationshipsQuery = `
+    SELECT (SELECT value FROM nodes WHERE id = nr.source_node_id) as source,
+           (SELECT value FROM nodes WHERE id = nr.target_node_id) as target,
+           relationship_type as type
+    FROM node_relationships nr
+    WHERE EXISTS (SELECT 1 FROM nodes WHERE nodes.id = nr.source_node_id AND nodes.website_id = ?)
+  `;
+  const relationships = await new Promise((resolve, reject) => {
+    db.all(relationshipsQuery, [websiteId], (err, rows) => err ? reject(err) : resolve((rows || []).map(rel => ({ source: rel.source, target: rel.target, type: rel.type || 'contains' }))));
+  });
+
+  return { nodes, relationships };
+}
 
 // Get all websites
 app.get('/websites', (req, res) => {
@@ -308,6 +580,320 @@ app.get('/websites/:websiteId/nodes', async (req, res) => {
     console.error('Error fetching nodes:', err.message);
     res.status(500).json({ error: 'Failed to fetch graph data', details: err.message });
   }
+});
+
+function computeProgress(done, status) {
+  const base = Math.max(0, Number(done) || 0);
+  const total = status === 'completed' ? base : base + 1;
+  const percent = total === 0 ? 0 : Math.round((base / total) * 100);
+  return { done: base, total, percent };
+}
+
+function computeElapsedSeconds(startedAt, finishedAt) {
+  if (!startedAt) return null;
+  const start = new Date(startedAt).getTime();
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return Math.max(0, Math.floor((end - start) / 1000));
+}
+
+function handleStartScan(req, res) {
+  const body = req.body || {};
+  const rawTarget = String(body.target || '').trim();
+  if (!rawTarget) return res.status(400).json({ error: 'target is required' });
+  const normalized = rawTarget.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  const scanId = require('crypto').randomUUID();
+  const startedAt = new Date().toISOString();
+  const optionsJson = JSON.stringify(body.options || {});
+  db.all("PRAGMA table_info('scans')", (cErr, cols) => {
+    if (cErr) return res.status(500).json({ error: cErr.message });
+    const names = (cols || []).map(c => c.name);
+    const colList = ['scan_id', 'target', 'started_at', 'status', 'options_json'];
+    const params = [scanId, normalized, startedAt, 'queued', optionsJson];
+    if (names.includes('timestamp_start')) {
+      colList.push('timestamp_start');
+      params.push(startedAt);
+    }
+    const sql = `INSERT INTO scans (${colList.join(',')}) VALUES (${colList.map(() => '?').join(',')})`;
+    db.run(sql, params, (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      db.run(
+        'INSERT OR REPLACE INTO scan_progress (scan_id, status, message, updated_at) VALUES (?, ?, ?, ?)',
+        [scanId, 'queued', 'Queued', startedAt],
+        () => {}
+      );
+      startScan({ db, scanId, target: normalized, options: body.options || {} });
+      res.json({ scanId, scan_id: scanId, status: 'queued' });
+    });
+  });
+}
+
+app.post('/api/scans', handleStartScan);
+app.post('/api/scans/start', handleStartScan);
+
+app.get('/api/scans/:scanId/status', (req, res) => {
+  const scanId = req.params.scanId;
+  db.get('SELECT * FROM scans WHERE scan_id = ? LIMIT 1', [scanId], (err, scanRow) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!scanRow) return res.status(404).json({ error: 'Scan not found' });
+    db.get('SELECT * FROM scan_progress WHERE scan_id = ? LIMIT 1', [scanId], (pErr, pRow) => {
+      if (pErr) return res.status(500).json({ error: pErr.message });
+      const status = scanRow.status || (pRow && pRow.status) || 'queued';
+      const message = (pRow && pRow.message) || '';
+      const updatedAt = (pRow && pRow.updated_at) || scanRow.started_at;
+      const stage = (pRow && pRow.stage) || '';
+      const stageLabel = (pRow && pRow.stage_label) || '';
+      const currentTarget = (pRow && pRow.current_target) || '';
+      const logTail = (pRow && pRow.log_tail) || '';
+      const logLines = logTail ? logTail.split('\n').filter(Boolean) : [];
+      const websiteId = scanRow.website_id;
+      if (!websiteId) {
+        return res.json({
+          scan_id: scanId,
+          target: scanRow.target,
+          status,
+          stage,
+          stage_label: stageLabel,
+          current_target: currentTarget,
+          message,
+          log_tail: logLines,
+          started_at: scanRow.started_at || scanRow.timestamp_start,
+          updated_at: updatedAt,
+          progress: {
+            subdomains: computeProgress(0, status),
+            directories: computeProgress(0, status),
+            endpoints: computeProgress(0, status)
+          }
+        });
+      }
+      const countSql = `
+        SELECT
+          (SELECT COUNT(*) FROM nodes WHERE website_id = ? AND type IN ('subdomain')) as subdomains_count,
+          (SELECT COUNT(*) FROM nodes WHERE website_id = ? AND type IN ('directory','dir')) as directories_count,
+          (SELECT COUNT(*) FROM nodes WHERE website_id = ? AND type IN ('endpoint','path','file')) as endpoints_count
+      `;
+      db.get(countSql, [websiteId, websiteId, websiteId], (cErr, cRow) => {
+        if (cErr) return res.status(500).json({ error: cErr.message });
+        res.json({
+          scan_id: scanId,
+          target: scanRow.target,
+          status,
+          stage,
+          stage_label: stageLabel,
+          current_target: currentTarget,
+          message,
+          log_tail: logLines,
+          started_at: scanRow.started_at || scanRow.timestamp_start,
+          updated_at: updatedAt,
+          progress: {
+            subdomains: computeProgress(cRow.subdomains_count || 0, status),
+            directories: computeProgress(cRow.directories_count || 0, status),
+            endpoints: computeProgress(cRow.endpoints_count || 0, status)
+          }
+        });
+      });
+    });
+  });
+});
+
+app.post('/api/scans/:scanId/cancel', (req, res) => {
+  const scanId = req.params.scanId;
+  db.get('SELECT status FROM scans WHERE scan_id = ? LIMIT 1', [scanId], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(404).json({ error: 'Scan not found' });
+    if (row.status === 'completed' || row.status === 'failed' || row.status === 'cancelled') {
+      return res.json({ ok: false, message: 'Scan already finished' });
+    }
+    // cancellation endpoint: update status + terminate running scan
+    const result = cancelScan({ db, scanId });
+    res.json({ ok: result.ok });
+  });
+});
+
+// List scans (newest first)
+app.get('/api/scans', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+  const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
+  const domain = (req.query.domain || '').trim();
+  const status = (req.query.status || '').trim();
+
+  const where = [];
+  const params = [];
+  if (domain) {
+    where.push('s.target LIKE ?');
+    params.push(`%${domain}%`);
+  }
+  if (status) {
+    where.push('s.status = ?');
+    params.push(status);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const countSql = `SELECT COUNT(*) as total FROM scans s ${whereSql}`;
+  db.get(countSql, params, (cErr, cRow) => {
+    if (cErr) return res.status(500).json({ error: cErr.message });
+    const total = cRow ? cRow.total : 0;
+    const sql = `
+      SELECT
+        s.scan_id,
+        COALESCE(s.target, s.scan_id) as target,
+        COALESCE(s.started_at, s.timestamp_start) as started_at,
+        COALESCE(s.finished_at, s.timestamp_end) as finished_at,
+        COALESCE(s.status, 'completed') as status,
+        s.website_id,
+        (SELECT COUNT(*) FROM nodes n WHERE n.website_id = s.website_id AND n.type IN ('subdomain')) as subdomains_count,
+        (SELECT COUNT(*) FROM nodes n WHERE n.website_id = s.website_id AND n.type IN ('directory','dir')) as directories_count,
+        (SELECT COUNT(*) FROM nodes n WHERE n.website_id = s.website_id AND n.type IN ('endpoint','path','file')) as endpoints_count,
+        (SELECT GROUP_CONCAT(DISTINCT ${techCol}) FROM node_technologies nt JOIN nodes n ON nt.node_id = n.id WHERE n.website_id = s.website_id) as technologies,
+        COALESCE(s.finished_at, s.started_at, s.timestamp_end, s.timestamp_start) as last_seen
+      FROM scans s
+      ${whereSql}
+      ORDER BY COALESCE(s.started_at, s.timestamp_start) DESC
+      LIMIT ? OFFSET ?
+    `;
+    db.all(sql, [...params, limit, offset], (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      const scans = (rows || []).map(r => ({
+        scan_id: r.scan_id,
+        target: r.target,
+        started_at: r.started_at,
+        finished_at: r.finished_at,
+        status: r.status || 'completed',
+        elapsed_seconds: computeElapsedSeconds(r.started_at, r.finished_at),
+        subdomains_count: r.subdomains_count || 0,
+        directories_count: r.directories_count || 0,
+        endpoints_count: r.endpoints_count || 0,
+        technologies: r.technologies ? r.technologies.split(',').filter(Boolean) : [],
+        last_seen: r.last_seen
+      }));
+      res.json({ scans, total });
+    });
+  });
+});
+
+// Group scans by domain
+app.get('/api/scans/domains', (req, res) => {
+  const sql = `
+    SELECT
+      s.target as domain,
+      COUNT(*) as scanCount,
+      MAX(COALESCE(s.started_at, s.timestamp_start, s.created_at)) as lastScanAt,
+      (
+        SELECT s2.status
+        FROM scans s2
+        WHERE s2.target = s.target
+        ORDER BY COALESCE(s2.started_at, s2.timestamp_start, s2.created_at) DESC
+        LIMIT 1
+      ) as lastStatus
+    FROM scans s
+    WHERE s.target IS NOT NULL AND s.target <> ''
+    GROUP BY s.target
+    ORDER BY lastScanAt DESC
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const domains = (rows || []).map(r => ({
+      domain: r.domain,
+      scanCount: r.scanCount || 0,
+      lastScanAt: r.lastScanAt,
+      lastStatus: r.lastStatus || 'completed'
+    }));
+    res.json({ domains });
+  });
+});
+
+// Scans for a specific domain
+app.get('/api/scans/domain/:domain', (req, res) => {
+  const domain = String(req.params.domain || '').trim();
+  if (!domain) return res.status(400).json({ error: 'domain is required' });
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+  const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
+  const sql = `
+    SELECT
+      s.scan_id,
+      s.target,
+      COALESCE(s.started_at, s.timestamp_start) as started_at,
+      COALESCE(s.finished_at, s.timestamp_end) as finished_at,
+      COALESCE(s.status, 'completed') as status
+    FROM scans s
+    WHERE s.target = ?
+    ORDER BY COALESCE(s.started_at, s.timestamp_start) DESC
+    LIMIT ? OFFSET ?
+  `;
+  db.all(sql, [domain, limit, offset], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const scans = (rows || []).map(r => ({
+      scan_id: r.scan_id,
+      target: r.target,
+      started_at: r.started_at,
+      finished_at: r.finished_at,
+      status: r.status,
+      elapsed_seconds: computeElapsedSeconds(r.started_at, r.finished_at)
+    }));
+    res.json({ scans, total: scans.length });
+  });
+});
+
+// Fetch a scan by ID with full graph data
+app.get('/api/scans/:scanId', async (req, res) => {
+  const scanId = req.params.scanId;
+  db.get('SELECT * FROM scans WHERE scan_id = ? LIMIT 1', [scanId], async (err, scanRow) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!scanRow) return res.status(404).json({ error: 'Scan not found' });
+    try {
+      const progress = await new Promise((resolve) => {
+        db.get('SELECT updated_at FROM scan_progress WHERE scan_id = ? LIMIT 1', [scanId], (pErr, pRow) => {
+          if (pErr) return resolve(null);
+          resolve(pRow?.updated_at || null);
+        });
+      });
+      const stages = await new Promise((resolve) => {
+        db.all('SELECT stage_key, label, status, started_at, finished_at, duration_seconds FROM scan_stages WHERE scan_id = ? ORDER BY started_at ASC', [scanId], (sErr, sRows) => {
+          if (sErr) return resolve([]);
+          resolve((sRows || []).map(r => ({
+            key: r.stage_key,
+            label: r.label,
+            status: r.status,
+            startedAt: r.started_at,
+            finishedAt: r.finished_at,
+            durationSeconds: r.duration_seconds
+          })));
+        });
+      });
+      const logs = await new Promise((resolve) => {
+        db.all('SELECT line FROM scan_logs WHERE scan_id = ? ORDER BY id ASC', [scanId], (lErr, lRows) => {
+          if (lErr) return resolve([]);
+          resolve((lRows || []).map(r => r.line).filter(Boolean));
+        });
+      });
+      const fallbackLogs = logs.length ? logs : await new Promise((resolve) => {
+        db.get('SELECT log_tail FROM scan_progress WHERE scan_id = ? LIMIT 1', [scanId], (pErr, pRow) => {
+          if (pErr) return resolve([]);
+          const tail = pRow && pRow.log_tail ? pRow.log_tail.split('\n').filter(Boolean) : [];
+          resolve(tail);
+        });
+      });
+      const graph = await fetchWebsiteGraphData(scanRow.website_id);
+      res.json({
+        scan: {
+          scan_id: scanRow.scan_id,
+          target: scanRow.target,
+          started_at: scanRow.started_at,
+          finished_at: scanRow.finished_at,
+          status: scanRow.status,
+          website_id: scanRow.website_id,
+          last_update_at: scanRow.last_update_at || progress,
+          elapsed_seconds: computeElapsedSeconds(scanRow.started_at, scanRow.finished_at)
+        },
+        stages,
+        logs: fallbackLogs,
+        nodes: graph.nodes,
+        relationships: graph.relationships
+      });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to load scan data', details: e.message });
+    }
+  });
 });
 
 // Serve raw viz JSON file (results/clean/<website>_viz.json) so frontend can fetch the original file

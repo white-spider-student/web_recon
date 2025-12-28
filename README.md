@@ -49,6 +49,88 @@ node server/init_and_import.js example.com
 python3 run_all.py example.com
 ```
 
+## Vulnerability Scanning
+
+The pipeline can run two safe vulnerability sources:
+
+- Nmap NSE (`--script vuln,vulners`) for service CVEs.
+- Nuclei for HTTP/HTTPS CVE templates.
+
+### Install Nuclei
+
+Follow the official install guide: https://github.com/projectdiscovery/nuclei#installation
+
+### Enable/Disable
+
+```bash
+# Disable nmap vuln scanning
+python3 run_all.py example.com --disable-nmap-vuln
+
+# Disable nuclei scanning
+python3 run_all.py example.com --disable-nuclei
+```
+
+### Configuration Options
+
+```bash
+# Lower/raise the CVSS threshold for vulners output (default 7.0)
+python3 run_all.py example.com --nmap-vuln-mincvss 5.0
+
+# Set nuclei severity filters (default medium,high,critical)
+python3 run_all.py example.com --nuclei-severities medium,high,critical
+
+# Point nuclei to a template path (optional, e.g. cves/)
+python3 run_all.py example.com --nuclei-templates cves/
+
+# Update nuclei templates before scan (optional)
+python3 run_all.py example.com --nuclei-update-templates
+```
+
+### Output Schemas
+
+Nmap NSE output:
+```json
+{
+  "target": "example.com",
+  "generatedAt": "2025-01-01T00:00:00Z",
+  "hosts": {
+    "1.2.3.4": {
+      "ports": {
+        "80/tcp": {
+          "service": "http Apache httpd 2.4.49",
+          "cves": [
+            {
+              "id": "CVE-2021-41773",
+              "cvss": 8.1,
+              "source": "vulners",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-41773"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+Nuclei output:
+```json
+{
+  "target": "example.com",
+  "generatedAt": "2025-01-01T00:00:00Z",
+  "findings": [
+    {
+      "url": "https://example.com/login",
+      "template": "CVE-2021-41773",
+      "cve": "CVE-2021-41773",
+      "severity": "high",
+      "name": "Apache 2.4.49 Path Traversal",
+      "refs": ["https://nvd.nist.gov/vuln/detail/CVE-2021-41773"]
+    }
+  ]
+}
+```
+
 ## Docs
 
 - Architecture notes: `docs/architecture.md`

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE nmaprun>
-<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
-<!-- Nmap 7.80 scan initiated Sun Dec 28 02:40:08 2025 as: nmap -sV -Pn -&#45;open -p 80,443,8080,8443 -&#45;script=http-server-header,http-title,http-headers,http-methods,http-auth,ssl-cert -&#45;script-args=http.useragent=&apos;Mozilla/5.0&apos; -T4 -&#45;max-retries 2 -&#45;host-timeout 300s -oX /home/mohammed/Desktop/test/web_recon/results/nmap_http_revshells.com_20251228-024008.xml revshells.com -->
-<nmaprun scanner="nmap" args="nmap -sV -Pn -&#45;open -p 80,443,8080,8443 -&#45;script=http-server-header,http-title,http-headers,http-methods,http-auth,ssl-cert -&#45;script-args=http.useragent=&apos;Mozilla/5.0&apos; -T4 -&#45;max-retries 2 -&#45;host-timeout 300s -oX /home/mohammed/Desktop/test/web_recon/results/nmap_http_revshells.com_20251228-024008.xml revshells.com" start="1766878808" startstr="Sun Dec 28 02:40:08 2025" version="7.80" xmloutputversion="1.04">
-<scaninfo type="connect" protocol="tcp" numservices="4" services="80,443,8080,8443"/>

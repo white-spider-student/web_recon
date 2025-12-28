@@ -58,6 +58,19 @@ const looksLikeFile = (segment) => {
   return idx > 0 && idx < segment.length - 1;
 };
 
+const isAssetUrl = (value) => {
+  if (!value) return false;
+  const raw = String(value).toLowerCase();
+  const path = raw.replace(/^https?:\/\/[^/]+/, '');
+  const name = path.split('/').pop() || '';
+  if (name === 'robots.txt' || name === 'sitemap.xml') return false;
+  if (name.startsWith('favicon') || name.includes('apple-touch-icon') || name === 'manifest.json' || name === 'browserconfig.xml' || name === 'safari-pinned-tab.svg') return true;
+  if (path.startsWith('/static/') || path.startsWith('/assets/') || path.startsWith('/images/') || path.startsWith('/img/') || path.startsWith('/fonts/') || path.startsWith('/cdn-cgi/')) return true;
+  const ext = name.includes('.') ? name.split('.').pop() : '';
+  if (['js','css','png','jpg','jpeg','gif','svg','ico','webp','woff','woff2','ttf','eot','map','mp4','webm','mp3','wav','pdf','zip','gz','tar','rar','7z','xml','txt','json'].includes(ext)) return true;
+  return false;
+};
+
 const buildGraph = (urls) => {
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -106,7 +119,22 @@ const buildGraph = (urls) => {
       addEdge(rootId, subdomainId);
       parentId = subdomainId;
     }
-    if (!pathSegments.length) return;
+    if (!pathSegments.length) {
+      if (pathWithQuery && pathWithQuery !== '/') {
+        const nodeId = `path:${host}:${pathWithQuery}`;
+        addNode({
+          id: nodeId,
+          type: 'path',
+          label: truncateLabel(pathWithQuery),
+          fullLabel: pathWithQuery,
+          hostname: host,
+          path: pathWithQuery,
+          level: isSubdomain ? 3 : 2
+        });
+        addEdge(parentId, nodeId);
+      }
+      return;
+    }
     pathSegments.forEach((segment, index) => {
       const prefix = `/${pathSegments.slice(0, index + 1).join('/')}`;
       const nodeId = `path:${host}:${prefix}`;
@@ -134,7 +162,7 @@ const buildGraph = (urls) => {
 };
 
 export default function App() {
-  const [target, setTarget] = useState('waitbutwhy.com');
+  const [target, setTarget] = useState('');
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState(null);
   const [currentWebsiteId, setCurrentWebsiteId] = useState(null);
@@ -145,6 +173,24 @@ export default function App() {
   const [highlightPath, setHighlightPath] = useState([]); // array of node ids that form the path
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [scanProgress, setScanProgress] = useState(null);
+  const [scanStatus, setScanStatus] = useState({ status: 'idle', stage: '', stageLabel: '', currentTarget: '', message: '', logTail: [], updatedAt: '', startedAt: '', stageMeta: {} });
+  const [showScanBanner, setShowScanBanner] = useState(false);
+  const [scanPanelOpen, setScanPanelOpen] = useState(true);
+  const [scanId, setScanId] = useState('');
+  const [scanCancelling, setScanCancelling] = useState(false);
+  const [scansOpen, setScansOpen] = useState(false);
+  const [scansLoading, setScansLoading] = useState(false);
+  const [scansError, setScansError] = useState('');
+  const [scansList, setScansList] = useState([]);
+  const [scansTotal, setScansTotal] = useState(0);
+  const [scansOffset, setScansOffset] = useState(0);
+  const [scansQuery, setScansQuery] = useState('');
+  const [historyTab, setHistoryTab] = useState('domains');
+  const [domainSummaries, setDomainSummaries] = useState([]);
+  const [selectedDomain, setSelectedDomain] = useState('');
+  const [domainScans, setDomainScans] = useState([]);
+  const [domainOffset, setDomainOffset] = useState(0);
   // When details panel is closed, ensure graph uses full width
   useEffect(() => {
     try {
@@ -169,6 +215,198 @@ export default function App() {
   });
   const [methodFilters, setMethodFilters] = useState({ GET: true, POST: true });
   const [fileTypeFilters, setFileTypeFilters] = useState({ Env: true, Text: true, XML: true, PHP: true, Hidden: true, Backup: true, SQL: true });
+
+  const formatLocalTime = (iso) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString();
+    } catch (e) {
+      return iso;
+    }
+  };
+
+  const applyFiltersFromNodes = (nodes) => {
+    const statuses = {};
+    const techs = {};
+    (nodes || []).forEach(n => {
+      const code = String(n.status || '200').replace(/[^0-9]/g, '');
+      if (code) statuses[code] = true;
+      const tlist = n.technologies || n.meta?.technologies || [];
+      if (Array.isArray(tlist)) {
+        tlist.forEach(t => { if (t) techs[t] = true; });
+      }
+    });
+    if (Object.keys(statuses).length) setStatusFilters(statuses);
+    if (Object.keys(techs).length) setTechFilters(techs);
+  };
+
+  const buildGraphFromNodes = (nodes, websiteId) => {
+    const transformedNodes = nodes.map(node => ({
+      ...node,
+      id: String(node.id),
+      group: node.type,
+      type: node.type,
+      value: node.value,
+      status: node.status,
+      size: node.size,
+      label: node.value
+    }));
+
+    const urlCandidates = transformedNodes
+      .filter(n => {
+        if (n.meta?.link_type && ['asset', 'feed'].includes(String(n.meta.link_type))) return false;
+        const candidate = n.value || n.id;
+        return candidate && !isAssetUrl(candidate);
+      })
+      .map(n => n.value || n.id)
+      .filter(Boolean);
+
+    const { nodes: graphNodes, edges } = buildGraph(urlCandidates);
+
+    const metaByHostId = new Map();
+    const metaByPathId = new Map();
+    transformedNodes.forEach(n => {
+      const parsed = normalizeUrlParts(n.value || n.id);
+      if (!parsed) return;
+      const { host, pathSegments } = parsed;
+      if (!host) return;
+      if (!pathSegments.length) {
+        if (n.type === 'domain' || n.type === 'subdomain') {
+          const hostId = `host:${host}`;
+          if (!metaByHostId.has(hostId)) metaByHostId.set(hostId, n);
+        }
+        return;
+      }
+      const prefix = `/${pathSegments.join('/')}`;
+      const pathId = `path:${host}:${prefix}`;
+      if (!metaByPathId.has(pathId)) metaByPathId.set(pathId, n);
+    });
+
+    const enrichedNodes = graphNodes.map(n => {
+      const meta = n.type === 'host' ? metaByHostId.get(n.id) : metaByPathId.get(n.id);
+      if (!meta) return n;
+      return {
+        ...n,
+        apiId: meta.id,
+        status: meta.status,
+        value: meta.value,
+        fullLabel: meta.value || n.fullLabel,
+        scan_started_at: meta.scan_started_at,
+        scan_finished_at: meta.scan_finished_at,
+        timestamp: meta.timestamp,
+        meta: meta.meta,
+        headers: meta.headers,
+        technologies: meta.technologies,
+        method: meta.method,
+        file_type: meta.file_type,
+        size: meta.size,
+        vulns: meta.vulns
+      };
+    });
+
+    setGraphData({ nodes: enrichedNodes, links: edges });
+    setCurrentWebsiteId(websiteId);
+    applyFiltersFromNodes(transformedNodes);
+  };
+
+  const fetchAllScans = async (offset = 0) => {
+    setScansLoading(true);
+    setScansError('');
+    try {
+      const params = new URLSearchParams({
+        limit: '10',
+        offset: String(offset)
+      });
+      const res = await axios.get(`http://localhost:3001/api/scans?${params.toString()}`);
+      setScansList(res.data.scans || []);
+      setScansTotal(res.data.total || 0);
+      setScansOffset(offset);
+    } catch (err) {
+      setScansError('Failed to load scans');
+    } finally {
+      setScansLoading(false);
+    }
+  };
+
+  const fetchDomainSummaries = async () => {
+    setScansLoading(true);
+    setScansError('');
+    try {
+      const res = await axios.get('http://localhost:3001/api/scans/domains');
+      setDomainSummaries(res.data.domains || []);
+    } catch (err) {
+      setScansError('Failed to load domain history');
+    } finally {
+      setScansLoading(false);
+    }
+  };
+
+  const fetchDomainScans = async (domain, offset = 0) => {
+    setScansLoading(true);
+    setScansError('');
+    try {
+      const params = new URLSearchParams({
+        limit: '10',
+        offset: String(offset)
+      });
+      const res = await axios.get(`http://localhost:3001/api/scans/domain/${encodeURIComponent(domain)}?${params.toString()}`);
+      setDomainScans(res.data.scans || []);
+      setDomainOffset(offset);
+    } catch (err) {
+      setScansError('Failed to load domain scans');
+    } finally {
+      setScansLoading(false);
+    }
+  };
+
+  const loadScanById = async (scanId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await axios.get(`http://localhost:3001/api/scans/${encodeURIComponent(scanId)}`);
+      const { scan, nodes, relationships, stages, logs } = res.data;
+      if (scan?.target) setTarget(scan.target);
+      buildGraphFromNodes(nodes || [], scan?.website_id);
+      setScansOpen(false);
+      setShowScanBanner(true);
+      setScanPanelOpen(true);
+      setScanId(scan?.scan_id || scanId);
+      setScanCancelling(false);
+      const stageList = Array.isArray(stages) ? stages : [];
+      const normalizeStageKey = (key) => {
+        if (key === 'html_links') return 'hyperhtml';
+        if (key === 'dirs') return 'directories';
+        return key;
+      };
+      const stageMeta = stageList.reduce((acc, s) => {
+        const key = normalizeStageKey(s.key);
+        acc[key] = {
+          durationSeconds: s.durationSeconds,
+          status: s.status,
+          message: s.status === 'timed_out' ? 'Timed out • partial' : s.status === 'capped' ? 'Capped • partial' : (s.status === 'failed' || s.status === 'cancelled' ? s.label : '')
+        };
+        return acc;
+      }, {});
+      const runningStage = stageList.find(s => s.status === 'running');
+      const lastStage = stageList.length ? stageList[stageList.length - 1] : null;
+      const currentStage = runningStage?.key || lastStage?.key || 'done';
+      setScanStatus({
+        status: scan?.status || 'completed',
+        stage: currentStage,
+        stageLabel: scan?.status || 'Completed',
+        currentTarget: '',
+        message: scan?.status || 'Completed',
+        logTail: Array.isArray(logs) ? logs : [],
+        updatedAt: scan?.last_update_at || scan?.finished_at || scan?.started_at || '',
+        startedAt: scan?.started_at || '',
+        stageMeta
+      });
+    } catch (err) {
+      setError('Failed to load scan');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // find shortest path between two node ids using BFS on the graph links
   const findShortestPath = (startId, endId) => {
@@ -320,135 +558,119 @@ export default function App() {
   const handleScan = async () => {
     setLoading(true);
     setError(null);
-    
+    setScanProgress(null);
+    setShowScanBanner(true);
+    setScanPanelOpen(true);
+    setScanCancelling(false);
+    setScanStatus({ status: 'queued', stage: 'start', stageLabel: 'Queued', currentTarget: '', message: 'Queued', logTail: [], updatedAt: '', stageMeta: {} });
     try {
-      // Fetch websites from the API
-      const websitesResponse = await axios.get('http://localhost:3001/websites');
-      const websites = websitesResponse.data;
-      
-      // Search for website by URL (case-insensitive)
-      const targetUrl = target.trim().toLowerCase();
-      let website = websites.find(w => w.url.toLowerCase() === targetUrl);
-      let websiteId;
-      
-      if (!website) {
-        // Website not found, create a new one
-        const newWebsiteResponse = await axios.post('http://localhost:3001/websites', {
-          url: target || 'example.com',
-          name: target || 'Example Website'
-        });
-        websiteId = newWebsiteResponse.data.id;
-        console.log(`Created new website: ${target}`);
-      } else {
-        // Website found, use its ID
-        websiteId = website.id;
-        console.log(`Found existing website: ${website.name} (ID: ${websiteId})`);
+      const raw = String(target || '').trim();
+      if (!raw) {
+        setError('Target is required');
+        setLoading(false);
+        return;
       }
-      
-      // Fetch nodes for the website
-      const response = await axios.get(`http://localhost:3001/websites/${websiteId}/nodes`);
-      const { nodes } = response.data;
-      // remember current website id so we can lazy-load single node details later
-      setCurrentWebsiteId(websiteId);
-      
-      console.log('=== DEBUG INFO ===');
-      console.log('Website ID:', websiteId);
-      console.log('Nodes received:', nodes.length);
-      
-      // Transform nodes to match the expected format
-      // Preserve the full node object so DetailsPanel can access node.meta, headers, technologies etc.
-      const transformedNodes = nodes.map(node => ({
-        // spread raw node fields to make them available on the node object
-        ...node,
-        // canonical id to be used by links
-        id: String(node.id),
-        group: node.type,
-        type: node.type,
-        value: node.value,
-        status: node.status,
-        size: node.size,
-        label: node.value
-      }));
+      const res = await axios.post('http://localhost:3001/api/scans', { target: raw });
+      const scanId = res.data.scan_id;
+      setScanId(scanId || '');
+      if (!scanId) throw new Error('No scan_id returned');
 
-      const urlCandidates = transformedNodes
-        .map(n => n.value || n.id)
-        .filter(Boolean);
-
-      const { nodes: graphNodes, edges } = buildGraph(urlCandidates);
-
-      const metaByHostId = new Map();
-      const metaByPathId = new Map();
-      transformedNodes.forEach(n => {
-        const parsed = normalizeUrlParts(n.value || n.id);
-        if (!parsed) return;
-        const { host, pathSegments } = parsed;
-        if (!host) return;
-        if (!pathSegments.length) {
-          if (n.type === 'domain' || n.type === 'subdomain') {
-            const hostId = `host:${host}`;
-            if (!metaByHostId.has(hostId)) metaByHostId.set(hostId, n);
-          }
-          return;
-        }
-        const prefix = `/${pathSegments.join('/')}`;
-        const pathId = `path:${host}:${prefix}`;
-        if (!metaByPathId.has(pathId)) metaByPathId.set(pathId, n);
-      });
-
-      const enrichedNodes = graphNodes.map(n => {
-        const meta = n.type === 'host' ? metaByHostId.get(n.id) : metaByPathId.get(n.id);
-        if (!meta) return n;
-        return {
-          ...n,
-          apiId: meta.id,
-          status: meta.status,
-          value: meta.value,
-          fullLabel: meta.value || n.fullLabel,
-          scan_started_at: meta.scan_started_at,
-          scan_finished_at: meta.scan_finished_at,
-          timestamp: meta.timestamp,
-          meta: meta.meta,
-          headers: meta.headers,
-          technologies: meta.technologies,
-          method: meta.method,
-          file_type: meta.file_type,
-          size: meta.size
-        };
-      });
-
-      const transformedLinks = edges;
-      
-      console.log('Final graph data:', { 
-        nodes: enrichedNodes.length, 
-        links: transformedLinks.length 
-      });
-      console.log('Sample links:', transformedLinks.slice(0, 3));
-      console.log('=== END DEBUG ===');
-
-      setGraphData({ nodes: enrichedNodes, links: transformedLinks });
-
-      // After the graph data updates, trigger a manual fit to show the full result set.
-      setTimeout(() => {
+      const poll = async () => {
         try {
-          if (window?.graphInstance?.manualFit) {
-            window.graphInstance.manualFit(420, 180, 60);
+          const statusRes = await axios.get(`http://localhost:3001/api/scans/${encodeURIComponent(scanId)}/status`, {
+            headers: { 'Cache-Control': 'no-cache' }
+          });
+          const payload = statusRes.data || {};
+          const status = payload.status || 'running';
+          if (payload.progress) {
+            setScanProgress(payload.progress);
           }
-        } catch (fitErr) {
-          console.debug('manualFit after scan failed', fitErr);
+          setScanStatus((prev) => {
+            const nextStageMeta = { ...(prev.stageMeta || {}) };
+            const stageKey = payload.stage === 'html_links' ? 'hyperhtml' : payload.stage === 'dirs' ? 'directories' : payload.stage || '';
+            if (payload.message && /timed out/i.test(payload.message) && stageKey) {
+              nextStageMeta[stageKey] = { ...(nextStageMeta[stageKey] || {}), status: 'timed_out', message: 'Timed out • partial' };
+            }
+            if (payload.message && /capped/i.test(payload.message) && stageKey) {
+              nextStageMeta[stageKey] = { ...(nextStageMeta[stageKey] || {}), status: 'capped', message: 'Capped • partial' };
+            }
+            return {
+              status,
+              stage: payload.stage || '',
+              stageLabel: payload.stage_label || payload.message || 'Running',
+              currentTarget: payload.current_target || '',
+              message: payload.message || '',
+              logTail: Array.isArray(payload.log_tail) ? payload.log_tail : (payload.log_tail ? [payload.log_tail] : []),
+              updatedAt: payload.updated_at || '',
+              startedAt: payload.started_at || '',
+              stageMeta: nextStageMeta
+            };
+          });
+          if (status === 'completed') {
+            const scanRes = await axios.get(`http://localhost:3001/api/scans/${encodeURIComponent(scanId)}`);
+            const { scan, nodes } = scanRes.data;
+            if (scan?.target) setTarget(scan.target);
+            buildGraphFromNodes(nodes || [], scan?.website_id);
+            setScanProgress(null);
+            setScanStatus({ status: 'completed', stage: 'done', stageLabel: 'Completed', currentTarget: '', message: 'Completed', logTail: [], updatedAt: '', stageMeta: scanStatus.stageMeta || {} });
+            setTimeout(() => setShowScanBanner(false), 3000);
+            setTimeout(() => setScanPanelOpen(false), 3000);
+            setLoading(false);
+            setScanCancelling(false);
+            return;
+          }
+          if (status === 'failed') {
+            const failedStage = payload.stage || scanStatus.stage || 'start';
+            setError(payload.message || 'Scan failed');
+            setScanProgress(null);
+            setScanStatus({ status: 'failed', stage: failedStage, stageLabel: 'Failed', currentTarget: '', message: payload.message || 'Failed', logTail: [], updatedAt: '', stageMeta: scanStatus.stageMeta || {} });
+            setLoading(false);
+            setScanCancelling(false);
+            return;
+          }
+          if (status === 'cancelled') {
+            const cancelledStage = payload.stage || scanStatus.stage || 'start';
+            setScanProgress(null);
+            setScanStatus({ status: 'cancelled', stage: cancelledStage, stageLabel: 'Cancelled', currentTarget: '', message: payload.message || 'Cancelled', logTail: Array.isArray(payload.log_tail) ? payload.log_tail : [], updatedAt: payload.updated_at || '', stageMeta: scanStatus.stageMeta || {} });
+            setLoading(false);
+            setScanCancelling(false);
+            return;
+          }
+          setTimeout(poll, 1000);
+        } catch (e) {
+          setError('Failed to fetch scan status');
+          setLoading(false);
+          setTimeout(poll, 1500);
         }
-      }, 320);
+      };
+      poll();
     } catch (err) {
-      console.error('Error fetching data:', err);
-      setError('Failed to fetch data from the server');
-    } finally {
+      console.error('Error starting scan:', err);
+      setError('Failed to start scan');
+      setScanProgress(null);
+      setScanStatus({ status: 'failed', stage: 'start', stageLabel: 'Failed', currentTarget: '', message: 'Failed to start', logTail: [], updatedAt: '', stageMeta: {} });
       setLoading(false);
+    }
+  };
+
+  const handleCancelScan = async () => {
+    if (!scanId || scanCancelling) return;
+    const confirm = window.confirm('Cancel this scan?');
+    if (!confirm) return;
+    setScanCancelling(true);
+    setScanStatus((prev) => ({ ...prev, status: 'cancelling', stageLabel: 'Cancelling', message: 'Cancelling scan' }));
+    try {
+      // cancellation request: server stops the active scan
+      await axios.post(`http://localhost:3001/api/scans/${encodeURIComponent(scanId)}/cancel`);
+    } catch (e) {
+      setScanCancelling(false);
+      setError('Failed to cancel scan');
     }
   };
 
   // Load data from the database on first render
   React.useEffect(() => {
-    handleScan();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Auto-start disabled; scans start only from user action.
   }, []);
 
   return (
@@ -478,6 +700,20 @@ export default function App() {
         >
           Generate Full Report
         </button>
+        {/* scan panel now renders on the right side */}
+        <button
+          onClick={() => {
+            setScansOpen(true);
+            setHistoryTab('domains');
+            setSelectedDomain('');
+            setScansQuery('');
+            fetchDomainSummaries();
+          }}
+          disabled={loading}
+          style={{ width: '100%', background: loading ? '#1a5e63' : '#0f172a', color: '#d6e6ea', fontWeight: 600, fontSize: 14, border: '1px solid #24303b', borderRadius: 7, padding: '9px 0', marginBottom: 18, cursor: loading ? 'not-allowed' : 'pointer' }}
+        >
+          Show All Scans
+        </button>
         {error && (
           <div style={{ color: '#ff6b6b', marginBottom: 22, padding: '10px', background: 'rgba(255,107,107,0.1)', borderRadius: 6 }}>
             {error}
@@ -487,24 +723,33 @@ export default function App() {
           <div style={{ fontSize: 13, color: '#9aa6b0', marginBottom: 6 }}>Progress</div>
           {(function() {
             const nodes = graphData.nodes || [];
-            const total = nodes.length || 1;
-            const subdomains = nodes.filter(n => n.type === 'host' && n.role === 'subdomain').length;
-            const directories = nodes.filter(n => n.type === 'dir').length;
-            const endpoints = nodes.filter(n => n.type === 'path' || n.type === 'file').length;
-            const p = (v) => Math.round((v / Math.max(1, total)) * 100);
+            const subdomainsFallback = nodes.filter(n => n.type === 'host' && n.role === 'subdomain').length;
+            const directoriesFallback = nodes.filter(n => n.type === 'dir').length;
+            const endpointsFallback = nodes.filter(n => n.type === 'path' || n.type === 'file').length;
+
+            const sub = scanProgress?.subdomains || { done: subdomainsFallback, percent: 0 };
+            const dir = scanProgress?.directories || { done: directoriesFallback, percent: 0 };
+            const end = scanProgress?.endpoints || { done: endpointsFallback, percent: 0 };
+
+            const pct = (value, fallbackCount) => {
+              if (value && typeof value.percent === 'number') return value.percent;
+              const total = Math.max(subdomainsFallback + directoriesFallback + endpointsFallback, 1);
+              return Math.round((fallbackCount / total) * 100);
+            };
+
             return (
               <>
                 <div style={{ marginBottom: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{subdomains} subdomains</span><span>{p(subdomains)}%</span></div>
-                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${p(subdomains)}%`, height: 4, background: '#2de2e6', borderRadius: 2 }} /></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{sub.done} subdomains</span><span>{pct(sub, sub.done)}%</span></div>
+                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${pct(sub, sub.done)}%`, height: 4, background: '#2de2e6', borderRadius: 2 }} /></div>
                 </div>
                 <div style={{ marginBottom: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{directories} directories</span><span>{p(directories)}%</span></div>
-                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${p(directories)}%`, height: 4, background: '#3b82f6', borderRadius: 2 }} /></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{dir.done} directories</span><span>{pct(dir, dir.done)}%</span></div>
+                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${pct(dir, dir.done)}%`, height: 4, background: '#3b82f6', borderRadius: 2 }} /></div>
                 </div>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{endpoints} endpoints</span><span>{p(endpoints)}%</span></div>
-                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${p(endpoints)}%`, height: 4, background: '#fb923c', borderRadius: 2 }} /></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{end.done} endpoints</span><span>{pct(end, end.done)}%</span></div>
+                  <div style={{ height: 4, background: '#232b36', borderRadius: 2 }}><div style={{ width: `${pct(end, end.done)}%`, height: 4, background: '#fb923c', borderRadius: 2 }} /></div>
                 </div>
               </>
             );
@@ -547,6 +792,199 @@ export default function App() {
           <input value={searchTerm} onChange={(e) => handleSearch(e.target.value)} type="text" placeholder="Search" style={{ width: '100%', padding: 8, background: '#10151c', color: '#2de2e6', border: '1px solid #232b36', borderRadius: 6, fontSize: 15 }} />
         </div>
       </div>
+
+      {scansOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(2, 6, 12, 0.6)', zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 720, maxWidth: '92vw', maxHeight: '86vh', background: '#0b1117', border: '1px solid #1f2a33', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.45)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #1f2a33', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#e5f4f6' }}>Scan History</div>
+              <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                <button
+                  onClick={() => {
+                    setHistoryTab('domains');
+                    setSelectedDomain('');
+                    fetchDomainSummaries();
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    background: historyTab === 'domains' ? '#2de2e6' : '#1f2937',
+                    color: historyTab === 'domains' ? '#042426' : '#d6e6ea',
+                    border: '1px solid #24303b',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600
+                  }}
+                >
+                  Domains
+                </button>
+                <button
+                  onClick={() => {
+                    setHistoryTab('all');
+                    fetchAllScans(0);
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    background: historyTab === 'all' ? '#2de2e6' : '#1f2937',
+                    color: historyTab === 'all' ? '#042426' : '#d6e6ea',
+                    border: '1px solid #24303b',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600
+                  }}
+                >
+                  All Scans
+                </button>
+              </div>
+              <input
+                value={scansQuery}
+                onChange={(e) => setScansQuery(e.target.value)}
+                placeholder="Filter by domain"
+                style={{ padding: '6px 10px', background: '#0f172a', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, fontSize: 13, width: 220 }}
+              />
+              <button
+                onClick={() => {
+                  if (historyTab === 'all') fetchAllScans(0);
+                  else fetchDomainSummaries();
+                }}
+                style={{ background: '#1f2937', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, padding: '6px 10px', fontSize: 12 }}
+              >
+                Search
+              </button>
+              <button
+                onClick={() => setScansOpen(false)}
+                style={{ background: 'transparent', color: '#9aa6b0', border: 'none', fontSize: 20, cursor: 'pointer' }}
+                aria-label="Close scans modal"
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ padding: 16, overflowY: 'auto' }}>
+              {scansLoading && <div style={{ color: '#9aa6b0' }}>Loading scans…</div>}
+              {scansError && <div style={{ color: '#ff6b6b', marginBottom: 8 }}>{scansError}</div>}
+              {historyTab === 'domains' && !selectedDomain && (
+                <>
+                  {(domainSummaries || [])
+                    .filter(d => String(d.domain || '').toLowerCase().includes(scansQuery.toLowerCase()))
+                    .map((domain) => (
+                      <div key={domain.domain} style={{ padding: 12, border: '1px solid #1f2a33', borderRadius: 10, marginBottom: 10, background: '#0f172a', display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDomain(domain.domain);
+                            setHistoryTab('domains');
+                            fetchDomainScans(domain.domain, 0);
+                          }}
+                          style={{ fontWeight: 600, color: '#e5f4f6', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+                          title="View domain history"
+                        >
+                          {domain.domain}
+                        </button>
+                        <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#1f2937', color: '#93c5fd' }}>{domain.lastStatus}</span>
+                        <span style={{ fontSize: 12, color: '#9aa6b0' }}>Scans: {domain.scanCount}</span>
+                        <span style={{ fontSize: 12, color: '#9aa6b0' }}>Last: {formatLocalTime(domain.lastScanAt)}</span>
+                      </div>
+                    ))}
+                  {!scansLoading && !domainSummaries.length && <div style={{ color: '#9aa6b0' }}>No scans found.</div>}
+                </>
+              )}
+              {historyTab === 'domains' && selectedDomain && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDomain('');
+                        fetchDomainSummaries();
+                      }}
+                      style={{ background: '#1f2937', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, padding: '4px 8px', fontSize: 12 }}
+                    >
+                      Back
+                    </button>
+                    <div style={{ color: '#e5f4f6', fontWeight: 600 }}>History: {selectedDomain}</div>
+                  </div>
+                  {!scansLoading && !domainScans.length && <div style={{ color: '#9aa6b0' }}>No scans found.</div>}
+                  {domainScans.map((scan) => (
+                    <div key={scan.scan_id} style={{ padding: 12, border: '1px solid #1f2a33', borderRadius: 10, marginBottom: 10, background: '#0f172a', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ fontWeight: 600, color: '#e5f4f6' }}>{scan.target}</div>
+                        <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#1f2937', color: '#93c5fd' }}>{scan.status}</span>
+                        <button
+                          onClick={() => loadScanById(scan.scan_id)}
+                          style={{ marginLeft: 'auto', background: '#2de2e6', color: '#042426', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, fontWeight: 600 }}
+                        >
+                          View
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#9aa6b0' }}>
+                        <span>Started: {formatLocalTime(scan.started_at)}</span>
+                        <span>Finished: {formatLocalTime(scan.finished_at)}</span>
+                        {scan.elapsed_seconds != null && <span>Elapsed: {scan.elapsed_seconds}s</span>}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              {historyTab === 'all' && (
+                <>
+                  {!scansLoading && !scansList.length && <div style={{ color: '#9aa6b0' }}>No scans found.</div>}
+                  {scansList
+                    .filter(scan => String(scan.target || '').toLowerCase().includes(scansQuery.toLowerCase()))
+                    .map((scan) => (
+                      <div key={scan.scan_id} style={{ padding: 12, border: '1px solid #1f2a33', borderRadius: 10, marginBottom: 10, background: '#0f172a', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ fontWeight: 600, color: '#e5f4f6' }}>{scan.target}</div>
+                          <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#1f2937', color: '#93c5fd' }}>{scan.status}</span>
+                          <button
+                            onClick={() => loadScanById(scan.scan_id)}
+                            style={{ marginLeft: 'auto', background: '#2de2e6', color: '#042426', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, fontWeight: 600 }}
+                          >
+                            View
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#9aa6b0' }}>
+                          <span>Started: {formatLocalTime(scan.started_at)}</span>
+                          <span>Finished: {formatLocalTime(scan.finished_at)}</span>
+                          {scan.elapsed_seconds != null && <span>Elapsed: {scan.elapsed_seconds}s</span>}
+                        </div>
+                      </div>
+                    ))}
+                </>
+              )}
+            </div>
+            <div style={{ padding: 12, borderTop: '1px solid #1f2a33', display: 'flex', justifyContent: 'space-between' }}>
+              <button
+                onClick={() => {
+                  if (historyTab === 'all') {
+                    fetchAllScans(Math.max(0, scansOffset - 10));
+                  } else if (selectedDomain) {
+                    fetchDomainScans(selectedDomain, Math.max(0, domainOffset - 10));
+                  }
+                }}
+                disabled={(historyTab === 'all' && scansOffset === 0) || (historyTab === 'domains' && selectedDomain && domainOffset === 0)}
+                style={{ background: '#1f2937', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, padding: '6px 10px', fontSize: 12, opacity: (historyTab === 'all' && scansOffset === 0) || (historyTab === 'domains' && selectedDomain && domainOffset === 0) ? 0.5 : 1 }}
+              >
+                Prev
+              </button>
+              <div style={{ fontSize: 12, color: '#9aa6b0' }}>
+                {historyTab === 'all' ? `${scansOffset + 1}-${Math.min(scansOffset + 10, scansTotal)} of ${scansTotal}` : selectedDomain ? `${domainOffset + 1}-${Math.min(domainOffset + 10, domainOffset + domainScans.length)}` : ''}
+              </div>
+              <button
+                onClick={() => {
+                  if (historyTab === 'all') {
+                    fetchAllScans(scansOffset + 10);
+                  } else if (selectedDomain) {
+                    fetchDomainScans(selectedDomain, domainOffset + 10);
+                  }
+                }}
+                disabled={historyTab === 'all' ? scansOffset + 10 >= scansTotal : !selectedDomain || domainScans.length < 10}
+                style={{ background: '#1f2937', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, padding: '6px 10px', fontSize: 12, opacity: historyTab === 'all' ? (scansOffset + 10 >= scansTotal ? 0.5 : 1) : (!selectedDomain || domainScans.length < 10 ? 0.5 : 1) }}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
   <div className="main-content">
         <div className="graph-area" style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', position: 'relative' }}>
@@ -604,19 +1042,43 @@ export default function App() {
           </div>
         </div>
         {/* Details panel rendered alongside graph */}
-        {selectedNode && (
+        {(selectedNode || (showScanBanner && scanPanelOpen)) && (
           <DetailsPanel
             node={selectedNode}
+            scan={showScanBanner && scanPanelOpen ? {
+              scanId,
+              target,
+              status: scanStatus.status || 'running',
+              startedAt: scanStatus.startedAt,
+              lastUpdateAt: scanStatus.updatedAt,
+              currentStage: scanStatus.stage || 'start',
+              stageLabel: scanStatus.stageLabel,
+              message: scanStatus.message,
+              currentTarget: scanStatus.currentTarget,
+            logLines: scanStatus.logTail,
+            stageMeta: {
+              ...(scanProgress?.subdomains?.done != null ? { subdomains: { count: scanProgress.subdomains.done } } : {}),
+              ...(scanProgress?.directories?.done != null ? { directories: { count: scanProgress.directories.done } } : {}),
+              ...(scanProgress?.endpoints?.done != null ? { hyperhtml: { count: scanProgress.endpoints.done } } : {}),
+              ...(scanStatus.stage === 'build_graph' && scanStatus.message ? { build_graph: { message: scanStatus.message } } : {}),
+              ...(scanStatus.stageLabel === 'Failed' ? {
+                [scanStatus.stage === 'html_links' ? 'hyperhtml' : scanStatus.stage === 'dirs' ? 'directories' : scanStatus.stage]: { message: scanStatus.message }
+              } : {}),
+              ...(scanStatus.stageMeta || {})
+            },
+            onClose: () => setScanPanelOpen(false),
+            onCancel: handleCancelScan,
+            canCancel: scanStatus.status === 'running' || scanStatus.status === 'cancelling',
+            cancelling: scanCancelling
+          } : null}
             onClose={() => {
               setSelectedNode(null);
-              // wait ~1 second, then zoom to fit (home)
               setTimeout(() => {
                 try {
                   if (window?.graphInstance?.manualFit) {
                     window.graphInstance.manualFit(400, 100, 80);
                   }
                 } catch (e) {
-                  // non-fatal; graph may not be ready
                   console.debug('manualFit on close failed', e);
                 }
               }, 1000);
