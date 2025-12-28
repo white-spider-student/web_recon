@@ -7,8 +7,10 @@ import time
 import argparse
 import sqlite3
 from datetime import datetime
+import uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse
 
 # Orchestrator: run ffuf_subs, then per-subdomain dirsearch/whatweb/webanalyze,
 # then nmap on root and whatweb/webanalyze on root as well.
@@ -18,6 +20,7 @@ SCRIPTS_DIR = PROJECT_ROOT / "recon"
 RESULTS_DIR = PROJECT_ROOT / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = PROJECT_ROOT / "server" / "data.db"
+CURRENT_SCAN_ID = None
 
 def write_file(fname, content):
     p = RESULTS_DIR / fname
@@ -36,7 +39,7 @@ def _ensure_website_row(db, website_url: str):
     cur.execute('INSERT INTO websites (url, name) VALUES (?, ?)', (website_url, website_url))
     return cur.lastrowid
 
-def record_scan_timestamp(website_url: str, started: bool = False, finished: bool = False):
+def record_scan_timestamp(website_url: str, started: bool = False, finished: bool = False, scan_id: str = None):
     if not website_url:
         return None
     ts = _utc_now_iso()
@@ -52,12 +55,33 @@ def record_scan_timestamp(website_url: str, started: bool = False, finished: boo
             print("[run_all] WARNING: websites scan timestamp columns missing; skipping timestamp update")
             db.close()
             return None
+        # ensure scans table exists
+        db.execute("""CREATE TABLE IF NOT EXISTS scans (
+            scan_id TEXT PRIMARY KEY,
+            website_id INTEGER,
+            target TEXT,
+            started_at TEXT,
+            finished_at TEXT,
+            status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
         _ensure_website_row(db, website_url)
+        website_id = _ensure_website_row(db, website_url)
         if started:
             db.execute('UPDATE websites SET scan_started_at = ? WHERE url = ?', (ts, website_url))
+            if scan_id:
+                db.execute(
+                    'INSERT OR REPLACE INTO scans (scan_id, website_id, target, started_at, status) VALUES (?, ?, ?, ?, ?)',
+                    (scan_id, website_id, website_url, ts, 'running')
+                )
             print(f"[run_all] Scan started at {ts}")
         if finished:
             db.execute('UPDATE websites SET scan_finished_at = ? WHERE url = ?', (ts, website_url))
+            if scan_id:
+                db.execute(
+                    'UPDATE scans SET finished_at = ?, status = ? WHERE scan_id = ?',
+                    (ts, 'completed', scan_id)
+                )
             print(f"[run_all] Scan finished at {ts}")
         db.commit()
         db.close()
@@ -100,6 +124,39 @@ def run_subprocess_script(script_path: Path, target, extra_args=None, env_extra=
         env.update(env_extra)
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+        out = p.stdout
+        if p.stderr:
+            out += "\nSTDERR:\n" + p.stderr
+        return True, out
+    except subprocess.TimeoutExpired as te:
+        return False, f"TIMEOUT: {te}"
+    except Exception as e:
+        return False, f"SUBPROCESS ERROR: {e}"
+
+def run_python_script(script_path: Path, args=None, env_extra=None, timeout=None):
+    cmd = [sys.executable, str(script_path)]
+    if args:
+        cmd += list(args)
+    env = os.environ.copy()
+    if env_extra:
+        env.update(env_extra)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+        out = p.stdout
+        if p.stderr:
+            out += "\nSTDERR:\n" + p.stderr
+        return True, out
+    except subprocess.TimeoutExpired as te:
+        return False, f"TIMEOUT: {te}"
+    except Exception as e:
+        return False, f"SUBPROCESS ERROR: {e}"
+
+def run_node_script(script_path: Path, args=None, timeout=None):
+    cmd = ["node", str(script_path)]
+    if args:
+        cmd += list(args)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         out = p.stdout
         if p.stderr:
             out += "\nSTDERR:\n" + p.stderr
@@ -274,18 +331,79 @@ def sanitize_target(target: str) -> str:
         t = t.rstrip('/')
     return t
 
+def normalize_base_url(raw: str):
+    try:
+        parsed = urlparse(raw.strip())
+        if not parsed.scheme or not parsed.hostname:
+            return None
+        host = parsed.hostname.lower()
+        scheme = parsed.scheme.lower()
+        port = parsed.port
+        if port is None:
+            port = 443 if scheme == "https" else 80
+        return f"{scheme}://{host}:{port}"
+    except Exception:
+        return None
+
+def build_nuclei_targets(domain: str, subdomains, discovered_urls=None):
+    targets = set()
+    hosts = set([sanitize_target(domain)])
+    hosts.update([sanitize_target(s) for s in (subdomains or []) if s])
+
+    for host in hosts:
+        if not host:
+            continue
+        targets.add(f"http://{host}:80")
+        targets.add(f"https://{host}:443")
+
+    for raw in (discovered_urls or []):
+        base = normalize_base_url(raw)
+        if base:
+            targets.add(base)
+
+    return sorted(targets)
+
+SUBDOMAIN_TIMEOUT_MS = 50_000
+DIRECTORY_TIMEOUT_MS = 50_000
+MAX_DIR_RESULTS = 300
+
+def count_dirsearch_results(path: Path) -> int:
+    try:
+        data = json.loads(path.read_text())
+        if isinstance(data, dict) and isinstance(data.get("results"), list):
+            return len(data.get("results"))
+        if isinstance(data, list):
+            return len(data)
+    except Exception:
+        return 0
+    return 0
+
 def main():
     parser = argparse.ArgumentParser(description="Orchestrate web recon: ffuf_subs -> dirsearch -> simple_fingerprint -> nmap")
     parser.add_argument("domain", help="Target root domain (example.com)")
-    parser.add_argument("--ffuf-max", type=int, default=30, help="Max runtime (s) to give ffuf_subs when importing/running")
+    parser.add_argument("--ffuf-max", type=int, default=50, help="Max runtime (s) to give ffuf_subs when importing/running")
     parser.add_argument("--workers", type=int, default=6, help="Number of concurrent workers for per-subdomain tasks")
+    parser.add_argument("--disable-nmap-vuln", action="store_true", help="Disable nmap vuln/vulners NSE scan")
+    parser.add_argument("--nmap-vuln-mincvss", type=float, default=7.0, help="Minimum CVSS for vulners script")
+    parser.add_argument("--disable-nuclei", action="store_true", help="Disable nuclei web vuln scan")
+    parser.add_argument("--nuclei-severities", default="medium,high,critical", help="Comma-separated nuclei severities to include")
+    parser.add_argument("--nuclei-templates", default="", help="Optional nuclei templates path (e.g., cves/)")
+    parser.add_argument("--nuclei-update-templates", action="store_true", help="Update nuclei templates before scanning")
     args = parser.parse_args()
 
     domain = args.domain.rstrip("/")
-    ffuf_max = args.ffuf_max
+    ffuf_max = min(int(args.ffuf_max), int(SUBDOMAIN_TIMEOUT_MS / 1000))
     workers = max(1, int(args.workers))
+    do_nmap_vuln = not args.disable_nmap_vuln
+    do_nuclei = not args.disable_nuclei
+    nmap_vuln_mincvss = args.nmap_vuln_mincvss
+    nuclei_severities = args.nuclei_severities
+    nuclei_templates = args.nuclei_templates.strip() or None
+    nuclei_update = args.nuclei_update_templates
 
-    record_scan_timestamp(domain, started=True)
+    global CURRENT_SCAN_ID
+    CURRENT_SCAN_ID = f"{domain}-{uuid.uuid4()}"
+    record_scan_timestamp(domain, started=True, scan_id=CURRENT_SCAN_ID)
     try:
         # Always start with a clean results directory to avoid stale outputs between runs
         try:
@@ -297,8 +415,11 @@ def main():
         except Exception as e:
             print(f"[run_all] WARNING: failed to fully clean results dir: {e}")
 
+        print("[stage] start start", flush=True)
         # Run ffuf_subs (prefer import)
         ffuf_script = SCRIPTS_DIR / "ffuf_subs.py"
+        print("[stage] start done", flush=True)
+        print("[stage] subdomains start", flush=True)
         if ffuf_script.exists():
             ok, out = try_import_and_run(ffuf_script, domain, max_time=ffuf_max)
             if ok:
@@ -312,6 +433,7 @@ def main():
         else:
             print("[run_all] ffuf_subs.py not found in recon/ - aborting")
             sys.exit(2)
+        print("[stage] subdomains done", flush=True)
 
         ffuf_outpath = locate_ffuf_output(domain)
         if not ffuf_outpath:
@@ -325,7 +447,9 @@ def main():
         else:
             print(f"[run_all] Found {len(subdomains)} subdomains. Running per-subdomain scans...")
 
+        discovered_urls = []
         # Optional: augment subdomains by crawling root homepage for linked subdomains
+        print("[stage] html_links start", flush=True)
         try:
             ok, html_json_fname = run_tool("html_link_discovery", domain, timeout=90)
             print(f"[run_all] html_link_discovery(root) -> {html_json_fname} (ok={ok})")
@@ -434,6 +558,16 @@ def main():
                 print(f"[run_all] failed to read html_link_discovery output: {e}")
         except Exception as e:
             print(f"[run_all] html_link_discovery error: {e}")
+        print("[stage] html_links done", flush=True)
+
+        js_script = SCRIPTS_DIR / "js_route_discovery.py"
+        print("[stage] js_routes start", flush=True)
+        if js_script.exists():
+            ok_js, out_js = run_tool("js_route_discovery", domain, timeout=90)
+            print(f"[run_all] js_route_discovery -> {out_js[:180]}...")
+        else:
+            print("[run_all] js_route_discovery.py not found; skipping")
+        print("[stage] js_routes done", flush=True)
 
         # Process per-subdomain work in parallel to speed up large lists.
         def process_subdomain(sd: str):
@@ -445,7 +579,7 @@ def main():
                 # dirsearch: prefer it to write its own JSON file
                 output_path = RESULTS_DIR / f"dirsearch_{clean_sd}.json"
                 extra_args = ["-u", f"http://{clean_sd}", "-o", str(output_path), "--format=json"]
-                dir_timeout = 1800
+                dir_timeout = int(DIRECTORY_TIMEOUT_MS / 1000)
                 ok, fname = run_tool("dirsearch", sd, timeout=dir_timeout, extra_args=extra_args)
                 if output_path.exists() and output_path.stat().st_size > 0:
                     try:
@@ -454,6 +588,16 @@ def main():
                         fname = output_path.name
                     except Exception:
                         pass
+                timed_out = False
+                if not ok and fname and "TIMEOUT" in str(fname):
+                    timed_out = True
+                if not ok and output_path.exists():
+                    timed_out = True
+                capped = False
+                if output_path.exists():
+                    found_count = count_dirsearch_results(output_path)
+                    if found_count >= MAX_DIR_RESULTS:
+                        capped = True
                 print(f"  dirsearch -> {fname} (ok={ok})")
 
                 # Import dirsearch results into the DB for visualization if available
@@ -482,13 +626,16 @@ def main():
                 ok2, fname2 = run_tool("simple_fingerprint", clean_sd, timeout=120)
                 print(f"  simple_fingerprint -> {fname2} (ok={ok2})")
 
-                return {"subdomain": sd, "dirsearch": (ok, fname), "fingerprint": (ok2, fname2)}
+                return {"subdomain": sd, "dirsearch": (ok, fname), "fingerprint": (ok2, fname2), "dir_timed_out": timed_out, "dir_capped": capped}
             except Exception as e:
                 return {"subdomain": sd, "error": str(e)}
 
         # Run per-subdomain tasks with a ThreadPoolExecutor
+        print("[stage] dirs start", flush=True)
         start = time.time()
         results = []
+        dir_timeouts = 0
+        dir_capped = 0
         if subdomains:
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futures = {ex.submit(process_subdomain, sd): sd for sd in subdomains}
@@ -498,19 +645,106 @@ def main():
                     except Exception as e:
                         r = {"subdomain": futures.get(fut), "error": str(e)}
                     results.append(r)
+                    if r.get("dir_timed_out"):
+                        dir_timeouts += 1
+                    if r.get("dir_capped"):
+                        dir_capped += 1
             elapsed = time.time() - start
             print(f"[run_all] Per-subdomain work completed in {elapsed:.1f}s using {workers} workers")
+        if dir_timeouts:
+            print(f"[run_all] Directories timed out after {int(DIRECTORY_TIMEOUT_MS / 1000)}s (partial results saved)")
+        if dir_capped:
+            print(f"[run_all] Directories capped at {MAX_DIR_RESULTS} results (partial results saved)")
+        print("[stage] dirs done", flush=True)
 
+        print("[stage] fingerprint start", flush=True)
         # Run nmap on root domain (single, heavier scan)
         ok, fname = run_tool("nmap", domain, timeout=600)
         print(f"[run_all] nmap -> {fname} (ok={ok})")
+
+        # Run nmap vulnerability scripts after discovery
+        if do_nmap_vuln:
+            nmap_vuln_script = SCRIPTS_DIR / "run_nmap_vuln.py"
+            if nmap_vuln_script.exists():
+                ok_v, out_v = run_subprocess_script(nmap_vuln_script, domain, extra_args=[str(nmap_vuln_mincvss), "900"])
+                print(f"[run_all] nmap_vuln -> {out_v[:180]}...")
+                try:
+                    importer = PROJECT_ROOT / 'recon' / 'import_nmap_vuln.py'
+                    clean_path = RESULTS_DIR / 'clean' / f"{sanitize_target(domain)}_nmap_vuln.json"
+                    if importer.exists() and clean_path.exists():
+                        ok_imp, out_imp = run_subprocess_script(importer, domain, extra_args=[str(clean_path)])
+                        print(f"[run_all] import_nmap_vuln -> {str(out_imp)[:180]}...")
+                except Exception as imp_err:
+                    print(f"[run_all] import_nmap_vuln error: {imp_err}")
+            else:
+                print("[run_all] run_nmap_vuln.py not found; skipping nmap vulnerability scan")
 
         # Run simple_fingerprint on root domain as well
         ok, fname = run_tool("simple_fingerprint", domain, timeout=180)
         print(f"[run_all] simple_fingerprint (root) -> {fname} (ok={ok})")
 
+        # Run nuclei against discovered HTTP/HTTPS base URLs
+        if do_nuclei:
+            try:
+                nuclei_script = SCRIPTS_DIR / "run_nuclei.py"
+                if nuclei_script.exists():
+                    targets = build_nuclei_targets(domain, subdomains, discovered_urls)
+                    if targets:
+                        targets_file = RESULTS_DIR / f"nuclei_targets_{sanitize_target(domain)}.txt"
+                        targets_file.write_text("\n".join(targets) + "\n")
+                        extra = [str(targets_file), nuclei_severities]
+                        extra.append(nuclei_templates or "")
+                        extra.append("1" if nuclei_update else "0")
+                        ok_n, out_n = run_subprocess_script(nuclei_script, domain, extra_args=extra)
+                        print(f"[run_all] nuclei -> {str(out_n)[:180]}...")
+                        importer = PROJECT_ROOT / 'recon' / 'import_nuclei.py'
+                        clean_path = RESULTS_DIR / 'clean' / f"{sanitize_target(domain)}_nuclei.json"
+                        if importer.exists() and clean_path.exists():
+                            ok_imp, out_imp = run_subprocess_script(importer, domain, extra_args=[str(clean_path)])
+                            print(f"[run_all] import_nuclei -> {str(out_imp)[:180]}...")
+                    else:
+                        print("[run_all] No nuclei targets discovered; skipping nuclei scan")
+                else:
+                    print("[run_all] run_nuclei.py not found; skipping nuclei scan")
+            except Exception as nuc_err:
+                print(f"[run_all] nuclei error: {nuc_err}")
+        print("[stage] fingerprint done", flush=True)
+
+        # Clean raw results, build viz JSON, and import into SQLite
+        try:
+            print("[stage] build_graph start", flush=True)
+            clean_script = PROJECT_ROOT / "clean_from_raw.py"
+            if clean_script.exists():
+                ok_c, out_c = run_python_script(clean_script, args=["--all"])
+                print(f"[run_all] clean_from_raw --all -> {str(out_c)[:180]}...")
+            else:
+                print("[run_all] clean_from_raw.py not found; skipping clean step")
+
+            minmap_script = PROJECT_ROOT / "minmap_format.py"
+            if minmap_script.exists():
+                ok_m, out_m = run_python_script(minmap_script, args=[])
+                print(f"[run_all] minmap_format -> {str(out_m)[:180]}...")
+            else:
+                print("[run_all] minmap_format.py not found; skipping viz build step")
+
+            viz_path = RESULTS_DIR / "clean" / f"{sanitize_target(domain)}_viz.json"
+            importer = PROJECT_ROOT / "server" / "import-visualized-data.js"
+            if importer.exists() and viz_path.exists():
+                ok_i, out_i = run_node_script(importer, args=[str(viz_path)])
+                print(f"[run_all] import-visualized-data -> {str(out_i)[:180]}...")
+            else:
+                if not importer.exists():
+                    print("[run_all] import-visualized-data.js not found; skipping DB import")
+                elif not viz_path.exists():
+                    print(f"[run_all] viz JSON not found at {viz_path}; skipping DB import")
+            print("[stage] build_graph done", flush=True)
+        except Exception as post_err:
+            print(f"[run_all] post-processing error: {post_err}")
+
+        print("[stage] done start", flush=True)
         print(f"[run_all] Done. Results directory: {RESULTS_DIR}")
+        print("[stage] done done", flush=True)
     finally:
-        record_scan_timestamp(domain, finished=True)
+        record_scan_timestamp(domain, finished=True, scan_id=CURRENT_SCAN_ID)
 if __name__ == "__main__":
     main()

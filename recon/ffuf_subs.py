@@ -87,9 +87,26 @@ def run(domain, max_time=30):
         cmd.extend(["-fs", str(calibrated_size)])
 
     process = subprocess.Popen(cmd)
+    start_time = time.time()
 
     try:
         while process.poll() is None:
+            if time.time() - start_time > max_time:
+                print(f"[run_all] Subdomains timed out after {max_time}s (partial results saved)", flush=True)
+                try:
+                    process.send_signal(signal.SIGINT)
+                except Exception:
+                    pass
+                for _ in range(10):
+                    if process.poll() is not None:
+                        break
+                    time.sleep(0.2)
+                else:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+                break
             time.sleep(0.2)
     except KeyboardInterrupt:
         print("\n[ffuf] Ctrl+C detected! Attempting graceful shutdown...")
@@ -119,4 +136,3 @@ if __name__ == "__main__":
         sys.exit(1)
     result = run(sys.argv[1])
     print(result)
-
