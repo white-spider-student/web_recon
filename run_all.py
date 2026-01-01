@@ -293,7 +293,7 @@ def run_tool(tool_name: str, target: str, timeout=None, extra_args=None, filenam
     return ok, out_fname
 
 
-def detect_schemes_fast(target: str, timeout=3):
+def detect_schemes_fast(target: str, timeout=None):
     """Fast TCP connect probe for ports 80 and 443. Returns ['http','https'] as detected."""
     import socket
 
@@ -364,7 +364,6 @@ def build_nuclei_targets(domain: str, subdomains, discovered_urls=None):
     return sorted(targets)
 
 SUBDOMAIN_TIMEOUT_MS = 50_000
-DIRECTORY_TIMEOUT_MS = 50_000
 MAX_DIR_RESULTS = 300
 
 def count_dirsearch_results(path: Path) -> int:
@@ -429,7 +428,7 @@ def main():
                     write_file(f"ffuf_subs_{domain.replace('.', '_')}.json", out)
             else:
                 # run as subprocess
-                run_subprocess_script(ffuf_script, domain, extra_args=[str(ffuf_max)], env_extra={"RESULTS_DIR": str(RESULTS_DIR)}, timeout=ffuf_max + 10)
+                run_subprocess_script(ffuf_script, domain, extra_args=[str(ffuf_max)], env_extra={"RESULTS_DIR": str(RESULTS_DIR)}, timeout=ffuf_max)
         else:
             print("[run_all] ffuf_subs.py not found in recon/ - aborting")
             sys.exit(2)
@@ -451,7 +450,7 @@ def main():
         # Optional: augment subdomains by crawling root homepage for linked subdomains
         print("[stage] html_links start", flush=True)
         try:
-            ok, html_json_fname = run_tool("html_link_discovery", domain, timeout=90)
+            ok, html_json_fname = run_tool("html_link_discovery", domain)
             print(f"[run_all] html_link_discovery(root) -> {html_json_fname} (ok={ok})")
             try:
                 # The html_link_discovery tool may have written the real discovery file as
@@ -563,7 +562,7 @@ def main():
         js_script = SCRIPTS_DIR / "js_route_discovery.py"
         print("[stage] js_routes start", flush=True)
         if js_script.exists():
-            ok_js, out_js = run_tool("js_route_discovery", domain, timeout=90)
+            ok_js, out_js = run_tool("js_route_discovery", domain)
             print(f"[run_all] js_route_discovery -> {out_js[:180]}...")
         else:
             print("[run_all] js_route_discovery.py not found; skipping")
@@ -579,8 +578,7 @@ def main():
                 # dirsearch: prefer it to write its own JSON file
                 output_path = RESULTS_DIR / f"dirsearch_{clean_sd}.json"
                 extra_args = ["-u", f"http://{clean_sd}", "-o", str(output_path), "--format=json"]
-                dir_timeout = int(DIRECTORY_TIMEOUT_MS / 1000)
-                ok, fname = run_tool("dirsearch", sd, timeout=dir_timeout, extra_args=extra_args)
+                ok, fname = run_tool("dirsearch", sd, extra_args=extra_args)
                 if output_path.exists() and output_path.stat().st_size > 0:
                     try:
                         _ = json.loads(output_path.read_text())
@@ -617,13 +615,13 @@ def main():
                     print(f"  import_dirsearch error: {imp_e}")
 
                 # Fast scheme detection (short timeout) - fallback to both
-                schemes = detect_schemes_fast(sd, timeout=2)
+                schemes = detect_schemes_fast(sd)
                 if not schemes:
                     schemes = ['http', 'https']
                 print(f"  Detected schemes for {sd}: {schemes}")
 
                 # run simple_fingerprint for this subdomain (it handles http/https itself)
-                ok2, fname2 = run_tool("simple_fingerprint", clean_sd, timeout=120)
+                ok2, fname2 = run_tool("simple_fingerprint", clean_sd)
                 print(f"  simple_fingerprint -> {fname2} (ok={ok2})")
 
                 return {"subdomain": sd, "dirsearch": (ok, fname), "fingerprint": (ok2, fname2), "dir_timed_out": timed_out, "dir_capped": capped}
@@ -652,14 +650,14 @@ def main():
             elapsed = time.time() - start
             print(f"[run_all] Per-subdomain work completed in {elapsed:.1f}s using {workers} workers")
         if dir_timeouts:
-            print(f"[run_all] Directories timed out after {int(DIRECTORY_TIMEOUT_MS / 1000)}s (partial results saved)")
+            print("[run_all] Directories timed out (partial results saved)")
         if dir_capped:
             print(f"[run_all] Directories capped at {MAX_DIR_RESULTS} results (partial results saved)")
         print("[stage] dirs done", flush=True)
 
         print("[stage] fingerprint start", flush=True)
         # Run nmap on root domain (single, heavier scan)
-        ok, fname = run_tool("nmap", domain, timeout=600)
+        ok, fname = run_tool("nmap", domain)
         print(f"[run_all] nmap -> {fname} (ok={ok})")
 
         # Run nmap vulnerability scripts after discovery
@@ -680,7 +678,7 @@ def main():
                 print("[run_all] run_nmap_vuln.py not found; skipping nmap vulnerability scan")
 
         # Run simple_fingerprint on root domain as well
-        ok, fname = run_tool("simple_fingerprint", domain, timeout=180)
+        ok, fname = run_tool("simple_fingerprint", domain)
         print(f"[run_all] simple_fingerprint (root) -> {fname} (ok={ok})")
 
         # Run nuclei against discovered HTTP/HTTPS base URLs

@@ -841,6 +841,18 @@ app.get('/api/scans/:scanId', async (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!scanRow) return res.status(404).json({ error: 'Scan not found' });
     try {
+      let websiteId = scanRow.website_id;
+      if (!websiteId && scanRow.target) {
+        websiteId = await new Promise((resolve) => {
+          db.get('SELECT id FROM websites WHERE url = ? LIMIT 1', [scanRow.target], (wErr, row) => {
+            if (wErr) return resolve(null);
+            resolve(row?.id || null);
+          });
+        });
+        if (websiteId) {
+          db.run('UPDATE scans SET website_id = ? WHERE scan_id = ?', [websiteId, scanId], () => {});
+        }
+      }
       const progress = await new Promise((resolve) => {
         db.get('SELECT updated_at FROM scan_progress WHERE scan_id = ? LIMIT 1', [scanId], (pErr, pRow) => {
           if (pErr) return resolve(null);
@@ -873,7 +885,7 @@ app.get('/api/scans/:scanId', async (req, res) => {
           resolve(tail);
         });
       });
-      const graph = await fetchWebsiteGraphData(scanRow.website_id);
+      const graph = websiteId ? await fetchWebsiteGraphData(websiteId) : { nodes: [], relationships: [] };
       res.json({
         scan: {
           scan_id: scanRow.scan_id,
@@ -881,7 +893,7 @@ app.get('/api/scans/:scanId', async (req, res) => {
           started_at: scanRow.started_at,
           finished_at: scanRow.finished_at,
           status: scanRow.status,
-          website_id: scanRow.website_id,
+          website_id: websiteId || scanRow.website_id,
           last_update_at: scanRow.last_update_at || progress,
           elapsed_seconds: computeElapsedSeconds(scanRow.started_at, scanRow.finished_at)
         },

@@ -176,6 +176,8 @@ export const ScanStepper = ({ scan, onClose }) => {
           } else if (state === 'failed') {
             metaLine = scan.status === 'cancelled' ? 'Cancelled' : (meta.message ? `Failed • ${meta.message}` : 'Failed');
           }
+          const limitNote = stage.key === 'subdomains' ? 'Limit 50s' : null;
+          const metaDisplay = limitNote ? [metaLine, limitNote].filter(Boolean).join(' • ') : metaLine;
           return (
             <div key={stage.key} className={`step ${state}`}>
               <div className="rail">
@@ -185,7 +187,7 @@ export const ScanStepper = ({ scan, onClose }) => {
               </div>
               <div className="label">
                 <div className="name">{stage.label}</div>
-                <div className="meta">{metaLine}</div>
+                <div className="meta">{metaDisplay}</div>
               </div>
             </div>
           );

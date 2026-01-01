@@ -48,14 +48,13 @@ def ensure_basic_node(node_id, node_type, label=None):
             if node_type in ('endpoint', 'file') or not existing.get('type'):
                 existing['type'] = node_type
                 existing['group'] = node_type
-        if label and existing.get('value') == existing.get('id'):
-            existing['value'] = label
+        if label:
             existing['label'] = label
         return existing
     node = {
         'id': node_id,
         'group': node_type,
-        'value': label or node_id,
+        'value': node_id,
         'type': node_type,
         'status': 0,
         'size': 0,

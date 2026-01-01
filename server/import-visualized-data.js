@@ -64,6 +64,22 @@ async function importViz(filePath){
   // start transaction
   await runAsync('BEGIN TRANSACTION');
   try {
+    if (websiteId != null) {
+      // Clear existing nodes for this website to avoid stale/partial graphs.
+      await runAsync(
+        'DELETE FROM node_relationships WHERE source_node_id IN (SELECT id FROM nodes WHERE website_id = ?) OR target_node_id IN (SELECT id FROM nodes WHERE website_id = ?)',
+        [websiteId, websiteId]
+      ).catch(() => {});
+      await runAsync(
+        'DELETE FROM node_headers WHERE node_id IN (SELECT id FROM nodes WHERE website_id = ?)',
+        [websiteId]
+      ).catch(() => {});
+      await runAsync(
+        'DELETE FROM node_technologies WHERE node_id IN (SELECT id FROM nodes WHERE website_id = ?)',
+        [websiteId]
+      ).catch(() => {});
+      await runAsync('DELETE FROM nodes WHERE website_id = ?', [websiteId]).catch(() => {});
+    }
     const nodeIdMap = {};
 
     // Insert or update nodes (merge-on-import)
@@ -178,4 +194,3 @@ async function importViz(filePath){
     db.close();
   }
 })();
-
