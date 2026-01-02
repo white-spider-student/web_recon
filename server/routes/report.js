@@ -4,6 +4,7 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const { buildReport } = require('../../recon/report/buildReport');
 const { renderHtml } = require('../../recon/report/renderHtml');
+const config = require('../config');
 
 const router = express.Router();
 
@@ -56,12 +57,15 @@ router.get('/full.pdf', async (req, res) => {
     const report = buildReport(graph, { scanId, generatedAt: new Date().toISOString() });
     const html = renderHtml(report);
 
+    const args = config.pdf.allowNoSandbox ? ['--no-sandbox', '--disable-setuid-sandbox'] : [];
     const browser = await puppeteer.launch({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args
     });
     try {
       const page = await browser.newPage();
+      page.setDefaultTimeout(15000);
+      page.setDefaultNavigationTimeout(15000);
       await page.setContent(html, { waitUntil: 'load' });
       const pdf = await page.pdf({
         format: 'A4',

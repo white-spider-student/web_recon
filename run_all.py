@@ -318,18 +318,22 @@ def detect_schemes_fast(target: str, timeout=None):
     return schemes
 
 def sanitize_target(target: str) -> str:
-    """Remove any leading scheme (http:// or https://) and trailing slash from target."""
+    """Normalize a target into a safe host[:port] string for filenames and tool args."""
     if not target:
         return target
     t = target.strip()
-    # remove leading scheme
-    t = re.sub(r"^https?://", "", t, flags=re.IGNORECASE)
-    # remove any leading slashes
-    t = re.sub(r"^//+", "", t)
-    # remove trailing slash
-    if t.endswith('/'):
-        t = t.rstrip('/')
-    return t
+    try:
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", t):
+            t = "http://" + t
+        parsed = urlparse(t)
+        host = (parsed.hostname or "").lower()
+        if not host:
+            raise ValueError("no host")
+        port = f":{parsed.port}" if parsed.port else ""
+        safe = f"{host}{port}"
+    except Exception:
+        safe = re.sub(r"[^A-Za-z0-9._:-]", "_", t.lower())
+    return safe
 
 def normalize_base_url(raw: str):
     try:

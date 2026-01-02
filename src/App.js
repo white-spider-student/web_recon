@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import { HierarchicalGraph } from './components/HierarchicalGraph';
+import { TreeExplorer } from './components/TreeExplorer';
 import { DetailsPanel } from './components/DetailsPanel';
 import axios from 'axios';
 
@@ -168,13 +169,25 @@ export default function App() {
   const [currentWebsiteId, setCurrentWebsiteId] = useState(null);
   const [spacing, setSpacing] = useState(0.2);
   const [levelNumber, setLevelNumber] = useState(1);
+  const [lazyGraphData, setLazyGraphData] = useState({ nodes: [], links: [] });
+  const [viewMode, setViewMode] = useState('tree');
+  const [fullGraphLoaded, setFullGraphLoaded] = useState(false);
+  const [graphMode, setGraphMode] = useState('focus');
+  const [focusDepth, setFocusDepth] = useState(1);
+  const [maxGraphNodes, setMaxGraphNodes] = useState(80);
+  const [hideUnrelated, setHideUnrelated] = useState(true);
+  const [dirClusterThreshold, setDirClusterThreshold] = useState(20);
+  const [urlClusterThreshold, setUrlClusterThreshold] = useState(50);
+  const [expandedClusters, setExpandedClusters] = useState(new Set());
+  const [lockLayout, setLockLayout] = useState(false);
+  const [graphLayout, setGraphLayout] = useState('radial');
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedNodes, setHighlightedNodes] = useState([]); // array of node ids
   const [highlightPath, setHighlightPath] = useState([]); // array of node ids that form the path
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [scanProgress, setScanProgress] = useState(null);
-  const [scanStatus, setScanStatus] = useState({ status: 'idle', stage: '', stageLabel: '', currentTarget: '', message: '', logTail: [], updatedAt: '', startedAt: '', stageMeta: {} });
+  const [scanStatus, setScanStatus] = useState({ status: 'idle', stage: '', stageLabel: '', currentTarget: '', message: '', logTail: [], updatedAt: '', startedAt: '', stageMeta: {}, rootNode: null });
   const [showScanBanner, setShowScanBanner] = useState(false);
   const [scanPanelOpen, setScanPanelOpen] = useState(true);
   const [scanId, setScanId] = useState('');
@@ -309,6 +322,112 @@ export default function App() {
     applyFiltersFromNodes(transformedNodes);
   };
 
+  const buildFocusSubgraph = (data, startId, depth, maxNodes) => {
+    if (!data?.nodes?.length || !data?.links?.length || !startId) {
+      return { nodes: data?.nodes || [], links: data?.links || [] };
+    }
+    const nodeMap = new Map(data.nodes.map(n => [String(n.id), n]));
+    const adj = new Map();
+    data.links.forEach(l => {
+      const src = String(typeof l.source === 'object' ? l.source.id : l.source);
+      const tgt = String(typeof l.target === 'object' ? l.target.id : l.target);
+      if (!adj.has(src)) adj.set(src, new Set());
+      if (!adj.has(tgt)) adj.set(tgt, new Set());
+      adj.get(src).add(tgt);
+      adj.get(tgt).add(src);
+    });
+    const start = String(startId);
+    const visited = new Set([start]);
+    const queue = [{ id: start, d: 0 }];
+    for (let i = 0; i < queue.length && visited.size < maxNodes; i++) {
+      const { id, d } = queue[i];
+      if (d >= depth) continue;
+      const neighbors = adj.get(id) || new Set();
+      for (const nb of neighbors) {
+        if (visited.size >= maxNodes) break;
+        if (!visited.has(nb)) {
+          visited.add(nb);
+          queue.push({ id: nb, d: d + 1 });
+        }
+      }
+    }
+    const nodes = Array.from(visited).map(id => nodeMap.get(id)).filter(Boolean);
+    const idSet = new Set(nodes.map(n => String(n.id)));
+    const links = data.links.filter(l => {
+      const src = String(typeof l.source === 'object' ? l.source.id : l.source);
+      const tgt = String(typeof l.target === 'object' ? l.target.id : l.target);
+      return idSet.has(src) && idSet.has(tgt);
+    });
+    return { nodes, links };
+  };
+
+  const buildClusteredGraph = (data) => {
+    if (!data?.nodes?.length || !data?.links?.length) return data;
+    const nodeMap = new Map(data.nodes.map(n => [String(n.id), n]));
+    const childrenByParent = new Map();
+    data.links.forEach(l => {
+      if (l.type !== 'contains') return;
+      const src = String(typeof l.source === 'object' ? l.source.id : l.source);
+      const tgt = String(typeof l.target === 'object' ? l.target.id : l.target);
+      if (!childrenByParent.has(src)) childrenByParent.set(src, []);
+      childrenByParent.get(src).push(tgt);
+    });
+
+    const hiddenNodes = new Set();
+    const hiddenLinks = new Set();
+    const clusterNodes = [];
+    const clusterLinks = [];
+
+    childrenByParent.forEach((childIds, parentId) => {
+      const dirKids = childIds.filter(id => nodeMap.get(id)?.type === 'dir');
+      const urlKids = childIds.filter(id => {
+        const t = nodeMap.get(id)?.type;
+        return t === 'path' || t === 'file';
+      });
+      if (dirKids.length > dirClusterThreshold) {
+        const clusterId = `cluster:${parentId}:dir`;
+        if (!expandedClusters.has(clusterId)) {
+          dirKids.forEach(id => hiddenNodes.add(id));
+          dirKids.forEach(id => hiddenLinks.add(`${parentId}->${id}`));
+          clusterNodes.push({
+            id: clusterId,
+            label: `Directories (${dirKids.length})`,
+            type: 'cluster',
+            clusterType: 'directory',
+            count: dirKids.length,
+            parentId
+          });
+          clusterLinks.push({ source: parentId, target: clusterId, type: 'contains' });
+        }
+      }
+      if (urlKids.length > urlClusterThreshold) {
+        const clusterId = `cluster:${parentId}:url`;
+        if (!expandedClusters.has(clusterId)) {
+          urlKids.forEach(id => hiddenNodes.add(id));
+          urlKids.forEach(id => hiddenLinks.add(`${parentId}->${id}`));
+          clusterNodes.push({
+            id: clusterId,
+            label: `URLs (${urlKids.length})`,
+            type: 'cluster',
+            clusterType: 'url',
+            count: urlKids.length,
+            parentId
+          });
+          clusterLinks.push({ source: parentId, target: clusterId, type: 'contains' });
+        }
+      }
+    });
+
+    const nodes = data.nodes.filter(n => !hiddenNodes.has(String(n.id))).concat(clusterNodes);
+    const links = data.links.filter(l => {
+      const src = String(typeof l.source === 'object' ? l.source.id : l.source);
+      const tgt = String(typeof l.target === 'object' ? l.target.id : l.target);
+      return !hiddenLinks.has(`${src}->${tgt}`);
+    }).concat(clusterLinks);
+
+    return { nodes, links };
+  };
+
   const fetchAllScans = async (offset = 0) => {
     setScansLoading(true);
     setScansError('');
@@ -359,14 +478,23 @@ export default function App() {
     }
   };
 
-  const loadScanById = async (scanId) => {
+  const loadScanById = async (scanId, summaryOnly = true) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get(`http://localhost:3001/api/scans/${encodeURIComponent(scanId)}`);
+      const res = await axios.get(`http://localhost:3001/api/scans/${encodeURIComponent(scanId)}${summaryOnly ? '?summary=1' : ''}`);
       const { scan, nodes, relationships, stages, logs } = res.data;
       if (scan?.target) setTarget(scan.target);
-      buildGraphFromNodes(nodes || [], scan?.website_id);
+      setGraphData({ nodes: [], links: [] });
+      setLazyGraphData({ nodes: [], links: [] });
+      setExpandedClusters(new Set());
+      if (!summaryOnly) {
+        buildGraphFromNodes(nodes || [], scan?.website_id);
+        setFullGraphLoaded(true);
+      } else {
+        setFullGraphLoaded(false);
+      }
+      setCurrentWebsiteId(scan?.website_id || null);
       setScansOpen(false);
       setShowScanBanner(true);
       setScanPanelOpen(true);
@@ -399,7 +527,8 @@ export default function App() {
         logTail: Array.isArray(logs) ? logs : [],
         updatedAt: scan?.last_update_at || scan?.finished_at || scan?.started_at || '',
         startedAt: scan?.started_at || '',
-        stageMeta
+        stageMeta,
+        rootNode: res.data?.root_node || null
       });
     } catch (err) {
       setError('Failed to load scan');
@@ -562,7 +691,7 @@ export default function App() {
     setShowScanBanner(true);
     setScanPanelOpen(true);
     setScanCancelling(false);
-    setScanStatus({ status: 'queued', stage: 'start', stageLabel: 'Queued', currentTarget: '', message: 'Queued', logTail: [], updatedAt: '', stageMeta: {} });
+    setScanStatus({ status: 'queued', stage: 'start', stageLabel: 'Queued', currentTarget: '', message: 'Queued', logTail: [], updatedAt: '', stageMeta: {}, rootNode: null });
     try {
       const raw = String(target || '').trim();
       if (!raw) {
@@ -603,16 +732,19 @@ export default function App() {
               logTail: Array.isArray(payload.log_tail) ? payload.log_tail : (payload.log_tail ? [payload.log_tail] : []),
               updatedAt: payload.updated_at || '',
               startedAt: payload.started_at || '',
-              stageMeta: nextStageMeta
+              stageMeta: nextStageMeta,
+              rootNode: prev.rootNode || null
             };
           });
           if (status === 'completed') {
-            const scanRes = await axios.get(`http://localhost:3001/api/scans/${encodeURIComponent(scanId)}`);
+            const scanRes = await axios.get(`http://localhost:3001/api/scans/${encodeURIComponent(scanId)}?summary=1`);
             const { scan, nodes } = scanRes.data;
             if (scan?.target) setTarget(scan.target);
-            buildGraphFromNodes(nodes || [], scan?.website_id);
+            setGraphData({ nodes: [], links: [] });
+            setLazyGraphData({ nodes: [], links: [] });
+            setCurrentWebsiteId(scan?.website_id || null);
             setScanProgress(null);
-            setScanStatus({ status: 'completed', stage: 'done', stageLabel: 'Completed', currentTarget: '', message: 'Completed', logTail: [], updatedAt: '', stageMeta: scanStatus.stageMeta || {} });
+            setScanStatus({ status: 'completed', stage: 'done', stageLabel: 'Completed', currentTarget: '', message: 'Completed', logTail: [], updatedAt: '', stageMeta: scanStatus.stageMeta || {}, rootNode: scanRes.data?.root_node || null });
             setTimeout(() => setShowScanBanner(false), 3000);
             setTimeout(() => setScanPanelOpen(false), 3000);
             setLoading(false);
@@ -623,7 +755,7 @@ export default function App() {
             const failedStage = payload.stage || scanStatus.stage || 'start';
             setError(payload.message || 'Scan failed');
             setScanProgress(null);
-            setScanStatus({ status: 'failed', stage: failedStage, stageLabel: 'Failed', currentTarget: '', message: payload.message || 'Failed', logTail: [], updatedAt: '', stageMeta: scanStatus.stageMeta || {} });
+            setScanStatus({ status: 'failed', stage: failedStage, stageLabel: 'Failed', currentTarget: '', message: payload.message || 'Failed', logTail: [], updatedAt: '', stageMeta: scanStatus.stageMeta || {}, rootNode: scanStatus.rootNode || null });
             setLoading(false);
             setScanCancelling(false);
             return;
@@ -631,7 +763,7 @@ export default function App() {
           if (status === 'cancelled') {
             const cancelledStage = payload.stage || scanStatus.stage || 'start';
             setScanProgress(null);
-            setScanStatus({ status: 'cancelled', stage: cancelledStage, stageLabel: 'Cancelled', currentTarget: '', message: payload.message || 'Cancelled', logTail: Array.isArray(payload.log_tail) ? payload.log_tail : [], updatedAt: payload.updated_at || '', stageMeta: scanStatus.stageMeta || {} });
+            setScanStatus({ status: 'cancelled', stage: cancelledStage, stageLabel: 'Cancelled', currentTarget: '', message: payload.message || 'Cancelled', logTail: Array.isArray(payload.log_tail) ? payload.log_tail : [], updatedAt: payload.updated_at || '', stageMeta: scanStatus.stageMeta || {}, rootNode: scanStatus.rootNode || null });
             setLoading(false);
             setScanCancelling(false);
             return;
@@ -648,7 +780,7 @@ export default function App() {
       console.error('Error starting scan:', err);
       setError('Failed to start scan');
       setScanProgress(null);
-      setScanStatus({ status: 'failed', stage: 'start', stageLabel: 'Failed', currentTarget: '', message: 'Failed to start', logTail: [], updatedAt: '', stageMeta: {} });
+      setScanStatus({ status: 'failed', stage: 'start', stageLabel: 'Failed', currentTarget: '', message: 'Failed to start', logTail: [], updatedAt: '', stageMeta: {}, rootNode: scanStatus.rootNode || null });
       setLoading(false);
     }
   };
@@ -672,6 +804,43 @@ export default function App() {
   React.useEffect(() => {
     // Auto-start disabled; scans start only from user action.
   }, []);
+
+  const handleTreeSelect = async (node) => {
+    try {
+      if (!currentWebsiteId || !node?.id) {
+        setSelectedNode(node || null);
+        return;
+      }
+      const encodedNodeId = encodeURIComponent(node.id);
+      const res = await axios.get(`http://localhost:3001/websites/${currentWebsiteId}/nodes/${encodedNodeId}`);
+      setSelectedNode(res.data.node || node);
+    } catch (e) {
+      setSelectedNode(node || null);
+    }
+  };
+
+  const handleTreeFocus = (node) => {
+    if (!node?.id) return;
+    try {
+      if (window?.graphInstance?.focusOn) {
+        window.graphInstance.focusOn(node.id, { zoom: 2, duration: 500 });
+      }
+    } catch (e) {
+      console.debug('focusOn failed', e);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode !== 'graph') return;
+    if (!scanId || fullGraphLoaded) return;
+    loadScanById(scanId, false);
+  }, [viewMode, scanId, fullGraphLoaded]);
+
+  useEffect(() => {
+    if (viewMode !== 'tree') return;
+    setGraphData({ nodes: [], links: [] });
+    setFullGraphLoaded(false);
+  }, [viewMode]);
 
   return (
     <div className="app-shell">
@@ -714,13 +883,127 @@ export default function App() {
         >
           Show All Scans
         </button>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: '#9aa6b0', marginBottom: 6 }}>View Mode</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setViewMode('tree')}
+              style={{
+                flex: 1,
+                padding: '6px 0',
+                background: viewMode === 'tree' ? '#2de2e6' : '#1f2937',
+                color: viewMode === 'tree' ? '#042426' : '#d6e6ea',
+                border: '1px solid #24303b',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600
+              }}
+            >
+              Tree
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('graph')}
+              style={{
+                flex: 1,
+                padding: '6px 0',
+                background: viewMode === 'graph' ? '#2de2e6' : '#1f2937',
+                color: viewMode === 'graph' ? '#042426' : '#d6e6ea',
+                border: '1px solid #24303b',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600
+              }}
+            >
+              Graph
+            </button>
+          </div>
+        </div>
+        {viewMode === 'graph' && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: '#9aa6b0', marginBottom: 6 }}>Graph Mode</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button
+                type="button"
+                onClick={() => setGraphMode('focus')}
+                style={{
+                  flex: 1,
+                  padding: '6px 0',
+                  background: graphMode === 'focus' ? '#2de2e6' : '#1f2937',
+                  color: graphMode === 'focus' ? '#042426' : '#d6e6ea',
+                  border: '1px solid #24303b',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600
+                }}
+              >
+                Focus
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <label style={{ fontSize: 12, color: '#9aa6b0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                Depth
+                <select
+                  value={focusDepth}
+                  onChange={(e) => setFocusDepth(Number(e.target.value))}
+                  style={{ background: '#0f172a', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, fontSize: 12, padding: '4px 6px' }}
+                >
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 12, color: '#9aa6b0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                Max nodes
+                <select
+                  value={maxGraphNodes}
+                  onChange={(e) => setMaxGraphNodes(Number(e.target.value))}
+                  style={{ background: '#0f172a', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, fontSize: 12, padding: '4px 6px' }}
+                >
+                  <option value={50}>50</option>
+                  <option value={80}>80</option>
+                  <option value={100}>100</option>
+                </select>
+              </label>
+            </div>
+            <label style={{ fontSize: 12, color: '#9aa6b0', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <input type="checkbox" checked={hideUnrelated} onChange={(e) => setHideUnrelated(e.target.checked)} />
+              Hide unrelated
+            </label>
+            <div style={{ fontSize: 12, color: '#9aa6b0', marginBottom: 6 }}>Supernode thresholds</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <label style={{ fontSize: 12, color: '#9aa6b0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                Directories
+                <input
+                  type="number"
+                  min="5"
+                  max="200"
+                  value={dirClusterThreshold}
+                  onChange={(e) => setDirClusterThreshold(Number(e.target.value))}
+                  style={{ width: 60, background: '#0f172a', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, fontSize: 12, padding: '4px 6px' }}
+                />
+              </label>
+              <label style={{ fontSize: 12, color: '#9aa6b0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                URLs
+                <input
+                  type="number"
+                  min="10"
+                  max="500"
+                  value={urlClusterThreshold}
+                  onChange={(e) => setUrlClusterThreshold(Number(e.target.value))}
+                  style={{ width: 60, background: '#0f172a', color: '#d6e6ea', border: '1px solid #24303b', borderRadius: 6, fontSize: 12, padding: '4px 6px' }}
+                />
+              </label>
+            </div>
+          </div>
+        )}
         {error && (
           <div style={{ color: '#ff6b6b', marginBottom: 22, padding: '10px', background: 'rgba(255,107,107,0.1)', borderRadius: 6 }}>
             {error}
           </div>
         )}
         <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 13, color: '#9aa6b0', marginBottom: 6 }}>Progress</div>
+        <div style={{ fontSize: 13, color: '#9aa6b0', marginBottom: 6 }}>Progress</div>
           {(function() {
             const nodes = graphData.nodes || [];
             const subdomainsFallback = nodes.filter(n => n.type === 'host' && n.role === 'subdomain').length;
@@ -909,7 +1192,7 @@ export default function App() {
                         <div style={{ fontWeight: 600, color: '#e5f4f6' }}>{scan.target}</div>
                         <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#1f2937', color: '#93c5fd' }}>{scan.status}</span>
                         <button
-                          onClick={() => loadScanById(scan.scan_id)}
+                          onClick={() => loadScanById(scan.scan_id, viewMode !== 'graph')}
                           style={{ marginLeft: 'auto', background: '#2de2e6', color: '#042426', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, fontWeight: 600 }}
                         >
                           View
@@ -934,12 +1217,12 @@ export default function App() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ fontWeight: 600, color: '#e5f4f6' }}>{scan.target}</div>
                           <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#1f2937', color: '#93c5fd' }}>{scan.status}</span>
-                          <button
-                            onClick={() => loadScanById(scan.scan_id)}
-                            style={{ marginLeft: 'auto', background: '#2de2e6', color: '#042426', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, fontWeight: 600 }}
-                          >
-                            View
-                          </button>
+                        <button
+                          onClick={() => loadScanById(scan.scan_id, viewMode !== 'graph')}
+                          style={{ marginLeft: 'auto', background: '#2de2e6', color: '#042426', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, fontWeight: 600 }}
+                        >
+                          View
+                        </button>
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#9aa6b0' }}>
                           <span>Started: {formatLocalTime(scan.started_at)}</span>
@@ -988,57 +1271,94 @@ export default function App() {
 
   <div className="main-content">
         <div className="graph-area" style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', position: 'relative' }}>
-          <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', minHeight: 0 }}>
-            <HierarchicalGraph
-              data={(function() {
-                // Filter nodes based on current filter settings
-                const visibleNodes = graphData.nodes.filter(n => {
-                  // Get status from the node data
-                  const status = String(n.status || '200').replace(/[^0-9]/g, '');
-                  
-                  // Check if this node should be visible based on filters
-                  if (!statusFilters[status]) return false;
-                  if (n.type && !typeFilters[n.type]) return false;
-                  
-                  return true;
-                });
-                
-                // Get IDs of visible nodes
-                const visibleIds = new Set(visibleNodes.map(n => n.id));
-                
-                // Filter links to only show connections between visible nodes
-                const visibleLinks = graphData.links.filter(l => {
-                  const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
-                  const targetId = typeof l.target === 'object' ? l.target.id : l.target;
-                  return visibleIds.has(sourceId) && visibleIds.has(targetId);
-                });
-                
-                return {
-                  nodes: visibleNodes,
-                  links: visibleLinks
-                };
-              })()}
-              spacing={spacing}
-              highlightedNodes={highlightedNodes}
-              highlightPath={highlightPath}
-              onNodeClick={async (node, highlightIds) => {
-                try {
-                  const apiId = node.apiId;
-                  if (currentWebsiteId && apiId !== undefined && apiId !== null) {
-                    const encodedNodeId = encodeURIComponent(apiId);
-                    const res = await axios.get(`http://localhost:3001/websites/${currentWebsiteId}/nodes/${encodedNodeId}`);
-                    setSelectedNode(res.data.node || node);
-                  } else {
+          <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', minHeight: 0, display: 'flex' }}>
+            {viewMode === 'tree' && (
+              <div style={{ width: 320, borderRight: '1px solid #1f2a33', background: '#0b1117' }}>
+                <TreeExplorer
+                rootNode={scanStatus.rootNode || null}
+                websiteId={currentWebsiteId}
+                onSelect={handleTreeSelect}
+                onGraphUpdate={setLazyGraphData}
+                onFocus={handleTreeFocus}
+                selectedNodeId={selectedNode?.id || null}
+              />
+            </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <HierarchicalGraph
+                data={(function() {
+                  const sourceData = viewMode === 'tree' ? lazyGraphData : graphData;
+                  let prepared = sourceData;
+                  if (viewMode === 'graph') {
+                    if (graphMode === 'focus' && hideUnrelated) {
+                      const root = (sourceData.nodes || []).find(n => n.type === 'host' && n.role === 'root') || (sourceData.nodes || [])[0];
+                      let startId = selectedNode?.id || null;
+                      if (startId != null) {
+                        const byGraphId = (sourceData.nodes || []).find(n => String(n.id) === String(startId));
+                        if (!byGraphId) {
+                          const byApiId = (sourceData.nodes || []).find(n => String(n.apiId) === String(startId));
+                          if (byApiId) startId = byApiId.id;
+                        }
+                      }
+                      const resolvedStart = startId || root?.id || null;
+                      prepared = buildFocusSubgraph(sourceData, resolvedStart, focusDepth, maxGraphNodes);
+                    }
+                    prepared = buildClusteredGraph(prepared);
+                  }
+                  // Filter nodes based on current filter settings
+                  const visibleNodes = (prepared.nodes || []).filter(n => {
+                    if (n.type === 'cluster') return true;
+                    const status = String(n.status || '200').replace(/[^0-9]/g, '');
+                    if (!statusFilters[status]) return false;
+                    if (n.type && !typeFilters[n.type]) return false;
+                    return true;
+                  });
+                  const visibleIds = new Set(visibleNodes.map(n => n.id));
+                  const visibleLinks = (prepared.links || []).filter(l => {
+                    const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                    const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                    return visibleIds.has(sourceId) && visibleIds.has(targetId);
+                  });
+                  return { nodes: visibleNodes, links: visibleLinks };
+                })()}
+                spacing={spacing}
+                highlightedNodes={highlightedNodes}
+                highlightPath={highlightPath}
+                disableLevelSystem={viewMode === 'tree' || graphMode === 'focus'}
+                selectedNodeId={selectedNode?.id || null}
+                graphMode={graphMode}
+                lockLayout={lockLayout}
+                onToggleLock={setLockLayout}
+                layoutPreset={graphLayout}
+                onLayoutChange={setGraphLayout}
+                onNodeClick={async (node, highlightIds) => {
+                  try {
+                    if (node?.type === 'cluster') {
+                      setExpandedClusters(prev => {
+                        const next = new Set(prev);
+                        if (next.has(node.id)) next.delete(node.id);
+                        else next.add(node.id);
+                        return next;
+                      });
+                      return;
+                    }
+                    const apiId = node.apiId || node.id;
+                    if (currentWebsiteId && apiId !== undefined && apiId !== null) {
+                      const encodedNodeId = encodeURIComponent(apiId);
+                      const res = await axios.get(`http://localhost:3001/websites/${currentWebsiteId}/nodes/${encodedNodeId}`);
+                      setSelectedNode(res.data.node || node);
+                    } else {
+                      setSelectedNode(node);
+                    }
+                  } catch (e) {
+                    console.error('Failed to fetch node details', e);
                     setSelectedNode(node);
                   }
-                } catch (e) {
-                  console.error('Failed to fetch node details', e);
-                  setSelectedNode(node);
-                }
 
-                setHighlightedNodes(highlightIds || [node.id]);
-              }}
-            />
+                  setHighlightedNodes(highlightIds || [node.id]);
+                }}
+              />
+            </div>
           </div>
         </div>
         {/* Details panel rendered alongside graph */}

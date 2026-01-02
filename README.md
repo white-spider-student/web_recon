@@ -34,6 +34,16 @@ npm start
 
 The UI runs at `http://localhost:3000` and the API runs at `http://localhost:3001`.
 
+## Configuration
+
+Copy `.env.example` to `.env` and adjust as needed:
+
+- `PORT` (default 3001)
+- `CORS_ORIGINS` (comma-separated list, default `http://localhost:3000,http://localhost:5500`)
+- `BODY_LIMIT` for API request size (default `1mb`)
+- `RATE_LIMIT_*` for API throttling
+- `PDF_ALLOW_NO_SANDBOX` only if your environment requires it
+
 ## Run a Recon Scan
 
 The orchestrator writes results into `server/data.db` and the `results/` folder.
@@ -48,6 +58,8 @@ node server/init_and_import.js example.com
 # Or run the Python orchestrator directly
 python3 run_all.py example.com
 ```
+
+Targets must be a hostname or IP address (no paths).
 
 ## Vulnerability Scanning
 
@@ -142,3 +154,11 @@ Nuclei output:
 
 - The API expects a local SQLite DB at `server/data.db`.
 - If you see `Missing dependency: sqlite3`, run `cd server && npm install sqlite3`.
+- Security guidance is documented in `SECURITY.md`.
+
+## Tests
+
+```bash
+cd server
+npm test
+```

@@ -1,9 +1,21 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import './Graph.css';
 import ForceGraph2D from 'react-force-graph-2d';
 import { forceManyBody, forceCollide, forceLink, forceCenter, forceRadial } from 'd3-force';
 
-export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], highlightPath = [] }) => {
+export const HierarchicalGraph = ({
+  data,
+  onNodeClick,
+  highlightedNodes = [],
+  highlightPath = [],
+  disableLevelSystem = false,
+  selectedNodeId = null,
+  graphMode = 'focus',
+  lockLayout = false,
+  onToggleLock,
+  layoutPreset = 'radial',
+  onLayoutChange
+}) => {
   const containerRef = useRef(null);
   const fgRef = useRef(null);
   const suppressAutoFit = useRef(false);
@@ -12,6 +24,8 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   const [levels, setLevels] = useState(new Map());
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [maxVisibleLevel, setMaxVisibleLevel] = useState(null); // when set, force visibility by level
+  const [hoverNodeId, setHoverNodeId] = useState(null);
+  const [pinnedNodes, setPinnedNodes] = useState(new Set());
   const [layout, setLayout] = useState(() => {
     if (typeof window === 'undefined') return 'radial';
     try {
@@ -83,6 +97,28 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       // ignore persistence errors
     }
   }, [layout]);
+
+  useEffect(() => {
+    if (layoutPreset && layoutPreset !== layout) {
+      setLayout(layoutPreset);
+    }
+  }, [layoutPreset]);
+
+  useEffect(() => {
+    if (!disableLevelSystem) return;
+    setMaxVisibleLevel(null);
+  }, [disableLevelSystem]);
+
+  useEffect(() => {
+    const inst = fgRef.current;
+    if (!inst || typeof inst.pauseAnimation !== 'function') return;
+    try {
+      if (lockLayout) inst.pauseAnimation();
+      else inst.resumeAnimation();
+    } catch (e) {
+      // ignore
+    }
+  }, [lockLayout]);
 
   // centralized setter that persists and emits event
   const setExpanded = useCallback((updater) => {
@@ -307,6 +343,12 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   // Filter visible nodes based on hierarchy and expansion state
   const getVisibleNodes = useCallback(() => {
     if (!data || !data.nodes) return [];
+    if (disableLevelSystem) {
+      return data.nodes.map(n => {
+        n.level = levels.get(n.id) ?? n.level;
+        return n;
+      });
+    }
 
     // Build parent map from links
     const parentMap = new Map();
@@ -376,7 +418,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     });
 
     return visibleNodes;
-  }, [data, expandedNodes]);
+  }, [data, expandedNodes, levels, maxVisibleLevel, disableLevelSystem]);
   
   // Get visible links based on visible nodes
   const getVisibleLinks = useCallback((visibleNodes) => {
@@ -393,7 +435,8 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
   // Enhanced color mapping based on hierarchy
   const getNodeColor = useCallback((node) => {
     if (!node || !node.type) return '#9CA3AF';
-    
+
+    if (node.type === 'cluster') return '#9333EA';
     if (node.type === 'host' && node.role === 'root') return '#DC2626';
     if (node.type === 'host' && node.role === 'subdomain') return '#2563EB';
     
@@ -415,11 +458,13 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
       dir: 14,
       path: 12,
       file: 12,
+      cluster: 18,
       port: 10,
       service: 10
     };
-    
+
     const baseSize = baseSizes[node.type] || 10;
+    const countBoost = node?.count ? Math.min(18, Math.log2(node.count + 1) * 4) : 0;
     
     // Make expanded nodes slightly larger
     const expandedMultiplier = expandedNodes.has(node.id) ? 1.2 : 1;
@@ -427,7 +472,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     // Make highlighted nodes larger
     const highlightMultiplier = highlightedNodes.includes(String(node.id)) ? 1.3 : 1;
     
-    return baseSize * expandedMultiplier * highlightMultiplier;
+    return (baseSize + countBoost) * expandedMultiplier * highlightMultiplier;
   }, [expandedNodes, highlightedNodes]);
   
   // Handle node click with expand/collapse functionality
@@ -456,9 +501,23 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
         return newSet;
       });
     }
-    
+
     focusOnNode(node);
-    
+
+    setPinnedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(node.id)) {
+        next.delete(node.id);
+        node.fx = null;
+        node.fy = null;
+      } else {
+        next.add(node.id);
+        node.fx = node.x;
+        node.fy = node.y;
+      }
+      return next;
+    });
+
     // Notify parent component
     onNodeClick && onNodeClick(node, [node.id]);
   }, [data, expandToNode, focusOnNode, onNodeClick]);
@@ -519,6 +578,26 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     };
   }, []);
 
+  const selectedNeighbors = useMemo(() => {
+    if (!selectedNodeId || !data?.links?.length) return new Set();
+    const neighbors = new Set([String(selectedNodeId)]);
+    data.links.forEach(l => {
+      const src = String(typeof l.source === 'object' ? l.source.id : l.source);
+      const tgt = String(typeof l.target === 'object' ? l.target.id : l.target);
+      if (src === String(selectedNodeId)) neighbors.add(tgt);
+      if (tgt === String(selectedNodeId)) neighbors.add(src);
+    });
+    return neighbors;
+  }, [data, selectedNodeId]);
+
+  const shouldShowLabel = useCallback((node) => {
+    if (!node) return false;
+    if (hoverNodeId && node.id === hoverNodeId) return true;
+    if (selectedNodeId && selectedNeighbors.has(node.id)) return true;
+    if (node.type === 'host' && node.role === 'root') return true;
+    return false;
+  }, [hoverNodeId, selectedNodeId, selectedNeighbors]);
+
   const escapeHtml = useCallback((value) => {
     return String(value ?? '')
       .replace(/&/g, '&amp;')
@@ -537,7 +616,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     const parts = parseUrlParts(node.fullLabel || node.value || '', node);
     const header = String(node.label || node.id || '').trim();
     const headerText = header.length > 28 ? `${header.slice(0, 28)}…` : header;
-    const typeLabel = node.type === 'host' ? 'Host' : (node.type === 'dir' ? 'Dir' : (node.type === 'file' ? 'File' : 'Path'));
+    const typeLabel = node.type === 'host' ? 'Host' : (node.type === 'dir' ? 'Dir' : (node.type === 'file' ? 'File' : (node.type === 'cluster' ? 'Cluster' : 'Path')));
     const extText = parts.extension ? parts.extension : '—';
     const hostText = parts.hostname || '—';
     const pathText = parts.pathname || '/';
@@ -609,13 +688,15 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     // Enhanced force configuration for hierarchical layout
     const simulation = fgRef.current.d3Force;
     if (simulation) {
-      // Radial force to organize by hierarchy level
-      
-      simulation('radial', forceRadial(
-        (node) => ((node.level || 1) - 1) * 160 + 60, // Distance: level 1 -> 0 offset, level 2 -> 160, level 3 -> 320
-        size.width / 2,
-        size.height / 2
-      ).strength(0.9));
+      if (layout === 'radial') {
+        simulation('radial', forceRadial(
+          (node) => ((node.level || 1) - 1) * 160 + 60,
+          size.width / 2,
+          size.height / 2
+        ).strength(0.9));
+      } else {
+        simulation('radial', null);
+      }
       
       simulation('charge', forceManyBody()
         .strength((node) => {
@@ -657,7 +738,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
     } catch (err) {
       console.error('[graph] layout error', err);
     }
-  }, [visibleNodes, visibleLinks, size, getNodeSize]);
+  }, [visibleNodes, visibleLinks, size, getNodeSize, layout]);
 
   // Toolbar actions: zoom in/out, reset home (fit), expand all, collapse all
   const zoomIn = () => {
@@ -720,7 +801,27 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
 
           <div className="sep" />
 
-          <LevelButtons />
+          {!disableLevelSystem && <LevelButtons />}
+
+          <div className="sep" />
+
+          <button
+            onClick={() => {
+              const next = layout === 'radial' ? 'force' : 'radial';
+              setLayout(next);
+              if (onLayoutChange) onLayoutChange(next);
+            }}
+            title="Toggle layout"
+          >
+            {layout === 'radial' ? 'Radial' : 'Force'}
+          </button>
+
+          <button
+            onClick={() => onToggleLock && onToggleLock(!lockLayout)}
+            title="Lock layout"
+          >
+            {lockLayout ? '🔒' : '🔓'}
+          </button>
 
           {/* removed expand/collapse buttons as requested */}
         </div>
@@ -738,6 +839,13 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
         
         // Node interactions
         onNodeClick={handleNodeClick}
+        onNodeHover={(node) => setHoverNodeId(node?.id || null)}
+        onNodeDragEnd={(node) => {
+          if (!node) return;
+          node.fx = node.x;
+          node.fy = node.y;
+          setPinnedNodes(prev => new Set(prev).add(node.id));
+        }}
         
         // Link styling
         linkWidth={(link) => {
@@ -745,6 +853,10 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
           const tgt = String(typeof link.target === 'object' ? link.target.id : link.target);
           const isHighlighted = highlightPath.includes(src) && highlightPath.includes(tgt);
           if (isHighlighted) return 4;
+          if (selectedNodeId) {
+            const relevant = src === String(selectedNodeId) || tgt === String(selectedNodeId);
+            return relevant ? 2 : 1;
+          }
           return link.type === 'contains' ? 2.5 : 1;
         }}
         
@@ -753,6 +865,10 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
           const tgt = String(typeof link.target === 'object' ? link.target.id : link.target);
           const isHighlighted = highlightPath.includes(src) && highlightPath.includes(tgt);
           if (isHighlighted) return '#F59E0B';
+          if (selectedNodeId) {
+            const relevant = src === String(selectedNodeId) || tgt === String(selectedNodeId);
+            return relevant ? 'rgba(96,165,250,0.92)' : 'rgba(96,165,250,0.15)';
+          }
           return link.type === 'contains' ? 'rgba(96,165,250,0.92)' : 'rgba(156,163,175,0.28)';
         }}
         
@@ -828,6 +944,7 @@ export const HierarchicalGraph = ({ data, onNodeClick, highlightedNodes = [], hi
 
             // draw name label below the node
             try {
+              if (!shouldShowLabel(node)) return;
               const label = node.label || node.value || node.id;
               ctx.save();
               ctx.font = `${Math.max(10, 12 / globalScale)}px Inter, Arial`;

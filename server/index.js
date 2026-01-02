@@ -6,13 +6,39 @@ const cors = require('cors');
 const path = require('path');
 const reportRoutes = require('./routes/report');
 const { startScan, cancelScan } = require('./scanRunner');
+const config = require('./config');
+const { normalizeTarget, isValidTarget } = require('./validators');
+
+if (config.cors.allowAll) {
+  console.warn('[config] CORS is set to allow all origins. Restrict this in production.');
+}
+if (config.pdf.allowNoSandbox) {
+  console.warn('[config] PDF_ALLOW_NO_SANDBOX=true reduces sandboxing. Use only if required.');
+}
 
 const app = express();
-const PORT = 3001;
+const PORT = config.port;
 
-app.use(bodyParser.json());
-app.use(cors());
-app.use('/api/report', reportRoutes);
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  next();
+});
+
+app.use(bodyParser.json({ limit: config.bodyLimit }));
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);
+    if (config.cors.allowAll) return cb(null, true);
+    if (config.cors.origins.includes(origin)) return cb(null, true);
+    return cb(new Error('CORS blocked'));
+  },
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
+// rate limiters are defined later after helper setup
 
 // Open DB
 const db = new sqlite3.Database(path.join(__dirname, 'data.db'), (err) => {
@@ -125,6 +151,8 @@ function ensureSchema() {
   db.run('CREATE INDEX IF NOT EXISTS idx_nodes_website_id ON nodes(website_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type)');
   db.run('CREATE INDEX IF NOT EXISTS idx_nodes_value ON nodes(value)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_node_rel_source ON node_relationships(source_node_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_node_rel_target ON node_relationships(target_node_id)');
 
   // Create scans table
   db.run(`CREATE TABLE IF NOT EXISTS scans (
@@ -142,6 +170,84 @@ function ensureSchema() {
     FOREIGN KEY (website_id) REFERENCES websites(id) ON DELETE SET NULL
   )`);
   db.run('CREATE INDEX IF NOT EXISTS idx_scans_target ON scans(target)');
+}
+
+function sendError(res, status, message, details) {
+  const payload = { error: message };
+  if (details) payload.details = details;
+  return res.status(status).json(payload);
+}
+
+function createRateLimiter({ windowMs, max }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const key = req.ip || 'unknown';
+    const now = Date.now();
+    const entry = hits.get(key);
+    if (!entry || entry.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    entry.count += 1;
+    if (entry.count > max) {
+      res.setHeader('Retry-After', Math.ceil((entry.resetAt - now) / 1000));
+      return sendError(res, 429, 'Too many requests');
+    }
+    return next();
+  };
+}
+
+const apiLimiter = createRateLimiter(config.rateLimit);
+const scanLimiter = createRateLimiter(config.scanRateLimit);
+const reportLimiter = createRateLimiter(config.reportRateLimit);
+
+app.use('/api', apiLimiter);
+app.use('/websites', apiLimiter);
+app.use('/nodes', apiLimiter);
+app.use('/api/report', reportLimiter, reportRoutes);
+
+async function loadHeadersByWebsite(websiteId) {
+  const query = `
+    SELECT nh.node_id as node_id, ${headerKeyCol} as keycol, ${headerValueCol} as valcol
+    FROM node_headers nh
+    JOIN nodes n ON n.id = nh.node_id
+    WHERE n.website_id = ?
+  `;
+  const rows = await new Promise((resolve) => {
+    db.all(query, [websiteId], (err, hRows) => {
+      if (err) return resolve([]);
+      resolve(hRows || []);
+    });
+  });
+  const map = new Map();
+  rows.forEach((row) => {
+    if (!map.has(row.node_id)) map.set(row.node_id, { obj: {}, list: [] });
+    const entry = map.get(row.node_id);
+    if (row.keycol != null) entry.obj[String(row.keycol)] = row.valcol == null ? '' : String(row.valcol);
+    entry.list.push({ key: row.keycol, value: row.valcol });
+  });
+  return map;
+}
+
+async function loadTechnologiesByWebsite(websiteId) {
+  const query = `
+    SELECT nt.node_id as node_id, ${techCol} as techcol
+    FROM node_technologies nt
+    JOIN nodes n ON n.id = nt.node_id
+    WHERE n.website_id = ?
+  `;
+  const rows = await new Promise((resolve) => {
+    db.all(query, [websiteId], (err, tRows) => {
+      if (err) return resolve([]);
+      resolve(tRows || []);
+    });
+  });
+  const map = new Map();
+  rows.forEach((row) => {
+    if (!map.has(row.node_id)) map.set(row.node_id, []);
+    map.get(row.node_id).push(row.techcol);
+  });
+  return map;
 }
 
 function ensureScansColumns(cb) {
@@ -354,7 +460,10 @@ async function fetchWebsiteGraphData(websiteId) {
     db.all(nodesQuery, [websiteId], (err, rows) => err ? reject(err) : resolve(rows || []));
   });
 
-  const nodes = await Promise.all(rawNodes.map(async (row) => {
+  const headerMap = await loadHeadersByWebsite(websiteId);
+  const techMap = await loadTechnologiesByWebsite(websiteId);
+
+  const nodes = rawNodes.map((row) => {
     const node = {
       id: row.value,
       group: row.type || 'unknown',
@@ -370,33 +479,10 @@ async function fetchWebsiteGraphData(websiteId) {
     if (websiteMeta.scan_started_at) node.meta.scan_started_at = websiteMeta.scan_started_at;
     if (websiteMeta.scan_finished_at) node.meta.scan_finished_at = websiteMeta.scan_finished_at;
 
-    const hQuery = `SELECT ${headerKeyCol} as keycol, ${headerValueCol} as valcol FROM node_headers WHERE node_id = ?`;
-    const headers = await new Promise((resolve) => {
-      db.all(hQuery, [row.id], (hErr, hRows) => {
-        if (hErr) {
-          console.error('Error loading headers for node', row.id, hErr.message);
-          return resolve([]);
-        }
-        resolve(hRows || []);
-      });
-    });
-    node.meta.headers = {};
-    node.headers = [];
-    headers.forEach(h => {
-      if (h.keycol != null) node.meta.headers[String(h.keycol)] = h.valcol == null ? '' : String(h.valcol);
-      node.headers.push({ key: h.keycol, value: h.valcol });
-    });
-
-    const tQuery = `SELECT ${techCol} as techcol FROM node_technologies WHERE node_id = ?`;
-    const techs = await new Promise((resolve) => {
-      db.all(tQuery, [row.id], (tErr, tRows) => {
-        if (tErr) {
-          console.error('Error loading technologies for node', row.id, tErr.message);
-          return resolve([]);
-        }
-        resolve((tRows || []).map(r => r.techcol));
-      });
-    });
+    const headers = headerMap.get(row.id) || { obj: {}, list: [] };
+    node.meta.headers = headers.obj || {};
+    node.headers = headers.list || [];
+    const techs = techMap.get(row.id) || [];
     node.meta.technologies = techs;
     node.technologies = techs;
 
@@ -430,7 +516,7 @@ async function fetchWebsiteGraphData(websiteId) {
     }
 
     return node;
-  }));
+  });
 
   const relationshipsQuery = `
     SELECT (SELECT value FROM nodes WHERE id = nr.source_node_id) as source,
@@ -478,9 +564,11 @@ app.get('/websites/:websiteId/nodes', async (req, res) => {
         resolve(row || {});
       });
     });
+    const headerMap = await loadHeadersByWebsite(websiteId);
+    const techMap = await loadTechnologiesByWebsite(websiteId);
 
     // Build nodes with headers and technologies using detected column names
-    const nodes = await Promise.all(rawNodes.map(async (row) => {
+    const nodes = rawNodes.map((row) => {
       const node = {
         id: row.value,
         group: row.type || 'unknown',
@@ -496,35 +584,10 @@ app.get('/websites/:websiteId/nodes', async (req, res) => {
       if (websiteMeta.scan_started_at) node.meta.scan_started_at = websiteMeta.scan_started_at;
       if (websiteMeta.scan_finished_at) node.meta.scan_finished_at = websiteMeta.scan_finished_at;
 
-      // headers
-      const hQuery = `SELECT ${headerKeyCol} as keycol, ${headerValueCol} as valcol FROM node_headers WHERE node_id = ?`;
-      const headers = await new Promise((resolve) => {
-        db.all(hQuery, [row.id], (hErr, hRows) => {
-          if (hErr) {
-            console.error('Error loading headers for node', row.id, hErr.message);
-            return resolve([]);
-          }
-          resolve(hRows || []);
-        });
-      });
-      node.meta.headers = {};
-      node.headers = [];
-      headers.forEach(h => {
-        if (h.keycol != null) node.meta.headers[String(h.keycol)] = h.valcol == null ? '' : String(h.valcol);
-        node.headers.push({ key: h.keycol, value: h.valcol });
-      });
-
-      // technologies
-      const tQuery = `SELECT ${techCol} as techcol FROM node_technologies WHERE node_id = ?`;
-      const techs = await new Promise((resolve) => {
-        db.all(tQuery, [row.id], (tErr, tRows) => {
-          if (tErr) {
-            console.error('Error loading technologies for node', row.id, tErr.message);
-            return resolve([]);
-          }
-          resolve((tRows || []).map(r => r.techcol));
-        });
-      });
+      const headers = headerMap.get(row.id) || { obj: {}, list: [] };
+      node.meta.headers = headers.obj || {};
+      node.headers = headers.list || [];
+      const techs = techMap.get(row.id) || [];
       node.meta.technologies = techs;
       node.technologies = techs;
 
@@ -561,7 +624,7 @@ app.get('/websites/:websiteId/nodes', async (req, res) => {
       }
 
       return node;
-    }));
+    });
 
     // Relationships
     const relationshipsQuery = `
@@ -578,7 +641,7 @@ app.get('/websites/:websiteId/nodes', async (req, res) => {
     res.json({ nodes, relationships });
   } catch (err) {
     console.error('Error fetching nodes:', err.message);
-    res.status(500).json({ error: 'Failed to fetch graph data', details: err.message });
+    sendError(res, 500, 'Failed to fetch graph data', err.message);
   }
 });
 
@@ -600,8 +663,9 @@ function computeElapsedSeconds(startedAt, finishedAt) {
 function handleStartScan(req, res) {
   const body = req.body || {};
   const rawTarget = String(body.target || '').trim();
-  if (!rawTarget) return res.status(400).json({ error: 'target is required' });
-  const normalized = rawTarget.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  if (!rawTarget) return sendError(res, 400, 'target is required');
+  if (!isValidTarget(rawTarget)) return sendError(res, 400, 'Invalid target', 'Expected a hostname or IP without paths');
+  const normalized = normalizeTarget(rawTarget);
   const scanId = require('crypto').randomUUID();
   const startedAt = new Date().toISOString();
   const optionsJson = JSON.stringify(body.options || {});
@@ -628,8 +692,8 @@ function handleStartScan(req, res) {
   });
 }
 
-app.post('/api/scans', handleStartScan);
-app.post('/api/scans/start', handleStartScan);
+app.post('/api/scans', scanLimiter, handleStartScan);
+app.post('/api/scans/start', scanLimiter, handleStartScan);
 
 app.get('/api/scans/:scanId/status', (req, res) => {
   const scanId = req.params.scanId;
@@ -841,6 +905,7 @@ app.get('/api/scans/:scanId', async (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!scanRow) return res.status(404).json({ error: 'Scan not found' });
     try {
+      const summaryOnly = String(req.query.summary || '').toLowerCase() === '1' || String(req.query.summary || '').toLowerCase() === 'true';
       let websiteId = scanRow.website_id;
       if (!websiteId && scanRow.target) {
         websiteId = await new Promise((resolve) => {
@@ -857,6 +922,31 @@ app.get('/api/scans/:scanId', async (req, res) => {
         db.get('SELECT updated_at FROM scan_progress WHERE scan_id = ? LIMIT 1', [scanId], (pErr, pRow) => {
           if (pErr) return resolve(null);
           resolve(pRow?.updated_at || null);
+        });
+      });
+      const rootNode = await new Promise((resolve) => {
+        if (!websiteId) return resolve(null);
+        const sql = `
+          SELECT
+            n.id,
+            n.value,
+            n.type,
+            EXISTS(SELECT 1 FROM node_relationships nr2 WHERE nr2.source_node_id = n.id) as has_children
+          FROM nodes n
+          WHERE n.website_id = ? AND n.type = 'domain'
+          ORDER BY (n.value = ?) DESC, n.value ASC
+          LIMIT 1
+        `;
+        db.get(sql, [websiteId, scanRow.target || ''], (rErr, row) => {
+          if (rErr || !row) return resolve(null);
+          resolve({
+            id: String(row.id),
+            parent_id: null,
+            label: row.value,
+            type: 'domain',
+            value: row.value,
+            has_children: !!row.has_children
+          });
         });
       });
       const stages = await new Promise((resolve) => {
@@ -885,7 +975,7 @@ app.get('/api/scans/:scanId', async (req, res) => {
           resolve(tail);
         });
       });
-      const graph = websiteId ? await fetchWebsiteGraphData(websiteId) : { nodes: [], relationships: [] };
+      const graph = (!summaryOnly && websiteId) ? await fetchWebsiteGraphData(websiteId) : { nodes: [], relationships: [] };
       res.json({
         scan: {
           scan_id: scanRow.scan_id,
@@ -897,6 +987,7 @@ app.get('/api/scans/:scanId', async (req, res) => {
           last_update_at: scanRow.last_update_at || progress,
           elapsed_seconds: computeElapsedSeconds(scanRow.started_at, scanRow.finished_at)
         },
+        root_node: rootNode,
         stages,
         logs: fallbackLogs,
         nodes: graph.nodes,
@@ -905,6 +996,191 @@ app.get('/api/scans/:scanId', async (req, res) => {
     } catch (e) {
       res.status(500).json({ error: 'Failed to load scan data', details: e.message });
     }
+  });
+});
+
+// Lazy tree fetcher for nodes by parent (filesystem-like)
+app.get('/api/nodes', async (req, res) => {
+  const parentId = req.query.parent_id ? String(req.query.parent_id).trim() : '';
+  const rawType = String(req.query.type || '').toLowerCase();
+  const rawLimit = req.query.limit ? Number(req.query.limit) : 120;
+  const rawCursor = req.query.cursor ? Number(req.query.cursor) : 0;
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.floor(rawLimit), 1), 500) : 120;
+  const offset = Number.isFinite(rawCursor) && rawCursor > 0 ? Math.floor(rawCursor) : 0;
+  if (!parentId) return sendError(res, 400, 'parent_id is required');
+  if (!rawType) return sendError(res, 400, 'type is required');
+  const type = rawType === 'subdomain' ? 'subdomain' : rawType === 'directory' ? 'directory' : rawType === 'url' ? 'url' : '';
+  if (!type) return sendError(res, 400, 'type must be subdomain, directory, or url');
+
+  const getWebsiteId = () => new Promise((resolve) => {
+    db.get('SELECT website_id FROM nodes WHERE id = ? LIMIT 1', [parentId], (err, row) => {
+      if (err) return resolve(null);
+      resolve(row?.website_id || null);
+    });
+  });
+
+  try {
+    const websiteId = await getWebsiteId();
+    if (!websiteId) return sendError(res, 404, 'Parent not found');
+
+    const typeClause = type === 'subdomain'
+      ? "n.type = 'subdomain'"
+      : type === 'directory'
+        ? "n.type IN ('directory','dir')"
+        : "n.type IN ('endpoint','path','file')";
+
+    const sql = `
+      SELECT
+        n.id,
+        n.value,
+        n.type,
+        n.status,
+        GROUP_CONCAT(DISTINCT nt.technology) as technologies,
+        EXISTS(SELECT 1 FROM node_relationships nr2 WHERE nr2.source_node_id = n.id) as has_children
+      FROM node_relationships nr
+      JOIN nodes n ON n.id = nr.target_node_id
+      LEFT JOIN node_technologies nt ON nt.node_id = n.id
+      WHERE nr.source_node_id = ? AND n.website_id = ? AND ${typeClause}
+      GROUP BY n.id
+      ORDER BY n.value ASC
+      LIMIT ? OFFSET ?
+    `;
+
+    db.all(sql, [parentId, websiteId, limit + 1, offset], (err, rows) => {
+      if (err) return sendError(res, 500, 'Failed to load nodes', err.message);
+      const hasMore = (rows || []).length > limit;
+      const trimmed = hasMore ? rows.slice(0, limit) : rows;
+      const nodes = (trimmed || []).map((row) => {
+        const rawValue = String(row.value || '');
+        let label = rawValue;
+        if (rawValue.includes('/')) {
+          const parts = rawValue.split('/').filter(Boolean);
+          label = parts.length ? parts[parts.length - 1] : '/';
+        }
+        return {
+          id: String(row.id),
+          parent_id: String(parentId),
+          label,
+          value: rawValue,
+          type,
+          status: row.status != null ? row.status : null,
+          technologies: row.technologies ? row.technologies.split(',').filter(Boolean) : [],
+          has_children: !!row.has_children
+        };
+      });
+      res.json({ nodes, next_cursor: hasMore ? offset + limit : null });
+    });
+  } catch (e) {
+    sendError(res, 500, 'Failed to load nodes', e.message);
+  }
+});
+
+app.get('/api/nodes/summary', async (req, res) => {
+  const parentId = req.query.parent_id ? String(req.query.parent_id).trim() : '';
+  if (!parentId) return sendError(res, 400, 'parent_id is required');
+
+  const getWebsiteId = () => new Promise((resolve) => {
+    db.get('SELECT website_id FROM nodes WHERE id = ? LIMIT 1', [parentId], (err, row) => {
+      if (err) return resolve(null);
+      resolve(row?.website_id || null);
+    });
+  });
+
+  try {
+    const websiteId = await getWebsiteId();
+    if (!websiteId) return sendError(res, 404, 'Parent not found');
+    const sql = `
+      SELECT
+        SUM(CASE WHEN n.type = 'subdomain' THEN 1 ELSE 0 END) as subdomains,
+        SUM(CASE WHEN n.type IN ('directory','dir') THEN 1 ELSE 0 END) as directories,
+        SUM(CASE WHEN n.type IN ('endpoint','path','file') THEN 1 ELSE 0 END) as urls
+      FROM node_relationships nr
+      JOIN nodes n ON n.id = nr.target_node_id
+      WHERE nr.source_node_id = ? AND n.website_id = ?
+    `;
+    const counts = await new Promise((resolve) => {
+      db.get(sql, [parentId, websiteId], (err, row) => {
+        if (err) return resolve({ subdomains: 0, directories: 0, urls: 0 });
+        resolve({
+          subdomains: row?.subdomains || 0,
+          directories: row?.directories || 0,
+          urls: row?.urls || 0
+        });
+      });
+    });
+
+    const statusCounts = await new Promise((resolve) => {
+      const statusSql = `
+        SELECT n.status as status, COUNT(*) as count
+        FROM node_relationships nr
+        JOIN nodes n ON n.id = nr.target_node_id
+        WHERE nr.source_node_id = ? AND n.website_id = ? AND n.type IN ('endpoint','path','file')
+        GROUP BY n.status
+      `;
+      db.all(statusSql, [parentId, websiteId], (err, rows) => {
+        if (err) return resolve({});
+        const map = {};
+        (rows || []).forEach(r => {
+          const key = r.status != null ? String(r.status) : 'unknown';
+          map[key] = r.count || 0;
+        });
+        resolve(map);
+      });
+    });
+
+    res.json({
+      counts,
+      status_counts: {
+        urls: statusCounts
+      }
+    });
+  } catch (e) {
+    sendError(res, 500, 'Failed to load summary', e.message);
+  }
+});
+
+app.get('/api/nodes/path', (req, res) => {
+  const nodeId = req.query.node_id ? String(req.query.node_id).trim() : '';
+  if (!nodeId) return sendError(res, 400, 'node_id is required');
+
+  const sql = `
+    WITH RECURSIVE chain(id, parent_id, depth) AS (
+      SELECT n.id, nr.source_node_id, 0
+      FROM nodes n
+      LEFT JOIN node_relationships nr ON nr.target_node_id = n.id
+      WHERE n.id = ?
+      UNION ALL
+      SELECT n2.id, nr2.source_node_id, c.depth + 1
+      FROM nodes n2
+      LEFT JOIN node_relationships nr2 ON nr2.target_node_id = n2.id
+      JOIN chain c ON c.parent_id = n2.id
+      WHERE c.parent_id IS NOT NULL
+    )
+    SELECT c.id, c.parent_id, n.value, n.type, n.status
+    FROM chain c
+    JOIN nodes n ON n.id = c.id
+    ORDER BY c.depth DESC
+  `;
+
+  db.all(sql, [nodeId], (err, rows) => {
+    if (err) return sendError(res, 500, 'Failed to load path', err.message);
+    const path = (rows || []).map((row) => {
+      const rawValue = String(row.value || '');
+      let label = rawValue;
+      if (rawValue.includes('/')) {
+        const parts = rawValue.split('/').filter(Boolean);
+        label = parts.length ? parts[parts.length - 1] : '/';
+      }
+      return {
+        id: String(row.id),
+        parent_id: row.parent_id != null ? String(row.parent_id) : null,
+        label,
+        value: rawValue,
+        type: row.type || null,
+        status: row.status != null ? row.status : null
+      };
+    });
+    res.json({ path });
   });
 });
 
@@ -933,9 +1209,14 @@ app.get('/websites/:websiteId/nodes/:nodeId', async (req, res) => {
   const { websiteId, nodeId } = req.params;
   try {
     const nodeRow = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM nodes WHERE website_id = ? AND value = ? LIMIT 1', [websiteId, nodeId], (err, row) => err ? reject(err) : resolve(row));
+      const isNumeric = /^[0-9]+$/.test(String(nodeId || ''));
+      const sql = isNumeric
+        ? 'SELECT * FROM nodes WHERE website_id = ? AND id = ? LIMIT 1'
+        : 'SELECT * FROM nodes WHERE website_id = ? AND value = ? LIMIT 1';
+      const params = isNumeric ? [websiteId, nodeId] : [websiteId, nodeId];
+      db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
     });
-    if (!nodeRow) return res.status(404).json({ error: 'Node not found' });
+    if (!nodeRow) return sendError(res, 404, 'Node not found');
     const websiteMeta = await new Promise((resolve) => {
       db.get('SELECT scan_started_at, scan_finished_at FROM websites WHERE id = ? LIMIT 1', [websiteId], (wErr, row) => {
         if (wErr) return resolve({});
@@ -1020,7 +1301,7 @@ app.get('/websites/:websiteId/nodes/:nodeId', async (req, res) => {
     res.json({ node });
   } catch (err) {
     console.error('Error fetching node:', err.message);
-    res.status(500).json({ error: 'Failed to fetch node', details: err.message });
+    sendError(res, 500, 'Failed to fetch node', err.message);
   }
 });
 
@@ -1080,8 +1361,8 @@ app.get('/nodes/:nodeId/relationships', (req, res) => {
   const nodeId = req.params.nodeId;
   const query = `
     SELECT nr.*, 
-           s.node_id as source_node_id_text,
-           t.node_id as target_node_id_text
+           s.value as source_node_id_text,
+           t.value as target_node_id_text
     FROM node_relationships nr
     JOIN nodes s ON nr.source_node_id = s.id
     JOIN nodes t ON nr.target_node_id = t.id
@@ -1095,6 +1376,19 @@ app.get('/nodes/:nodeId/relationships', (req, res) => {
       res.json(rows);
     }
   });
+});
+
+app.use('/api', (req, res) => {
+  sendError(res, 404, 'Not found');
+});
+
+app.use((err, req, res, next) => {
+  if (err && err.message === 'CORS blocked') return sendError(res, 403, 'CORS blocked');
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return sendError(res, 400, 'Invalid JSON');
+  }
+  console.error('Unhandled error:', err?.message || err);
+  return sendError(res, 500, 'Server error');
 });
 
 // Start server

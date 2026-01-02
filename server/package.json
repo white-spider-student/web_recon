@@ -4,7 +4,8 @@
   "description": "API server for web recon map",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node test/validators.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
